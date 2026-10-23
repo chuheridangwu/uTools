@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                        // 编译目标:现代浏览器
+    "module": "ESNext",                        // 模块规范
+    "moduleResolution": "bundler",             // Vite bundler 解析策略
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,                            // 严格模式
+    "jsx": "preserve",                         // Vue 模板编译由 plugin-vue 处理
+    "noEmit": true,                            // 只做类型检查,产物交给 vite build
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "useDefineForClassFields": true,
+    "noUnusedLocals": false,                   // 关闭未使用检查,降低维护成本
+    "noUnusedParameters": false,
+    "types": ["node", "vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]                         // @ 别名映射
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"]
+}

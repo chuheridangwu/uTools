@@ -1,0 +1,135 @@
+/* ==========================================================================
+   全局基础样式 —— uTools 在线工具站
+   品牌主色 #6366f1 (indigo),通过 CSS 变量统一管理;
+   暗色模式基于 Element Plus 官方 dark css-vars(font-size 等),只做增量覆盖。
+   ========================================================================== */
+:root {
+  --brand: #6366f1;
+  --brand-light: #818cf8;
+  --radius-md: 10px;
+  --page-bg: #f5f7fb;
+  --card-border: #e5e7eb;
+}
+
+/* 暗色模式下仅微调页面底色与边框,其余交给 Element Plus dark 变量 */
+html.dark {
+  --page-bg: #101014;
+  --card-border: #26262e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    Inter,
+    'PingFang SC',
+    'Microsoft YaHei',
+    -apple-system,
+    sans-serif;
+  background: var(--page-bg);
+  color: var(--el-text-color-primary);
+  transition: background-color 0.25s;
+  overflow: hidden; /* 全局滚动交给布局内部区域 */
+}
+
+/* ---------- 通用布局工具类 ---------- */
+.flex { display: flex; }
+.flex1 { flex: 1; min-width: 0; }
+.gap8 { gap: 8px; }
+.mt8 { margin-top: 8px; }
+.mt16 { margin-top: 16px; }
+.mb8 { margin-bottom: 8px; }
+.mb16 { margin-bottom: 16px; }
+.tac { text-align: center; }
+.w100p {
+  width: 100%;
+}
+.spacing {
+  flex: 1;
+}
+
+/* ---------- 工具页面通用卡片 ---------- */
+.card {
+  background: var(--el-bg-color);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+}
+
+/* 主要工作区:让工具内容有统一的最大宽度与边距 */
+.tool-page {
+  padding: 20px 24px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 等宽字体片段:统计/预览/哈希输出统一风格 */
+.mono {
+  font-family: 'JetBrains Mono', SFMono-Regular, Consolas, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 小号灰字说明 */
+.muted {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+/* 可选中可复制的输出块 */
+.output-box {
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 42px;
+  max-height: 320px;
+  overflow: auto;
+  user-select: text;
+}
+
+/* 代码/textarea 编辑区通用高度 */
+.editor-area {
+  font-family: 'JetBrains Mono', SFMono-Regular, Consolas, Menlo, monospace;
+  font-size: 13px;
+}
+
+/* 简易表格行斑马纹(不依赖 ElTable 的场景) */
+.zebra tr:nth-child(even) {
+  background: var(--el-fill-color-lighter);
+}
+
+/* ---------- 细节滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--el-border-color-darker);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 路由切换过渡 ---------- */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

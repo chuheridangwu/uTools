@@ -2,7 +2,7 @@
 /**
  * App 根组件 —— 布局骨架
  * 结构:左侧边栏(可收起) + 顶部栏 + 主内容区 + 底部状态栏
- * 命令面板(Ctrl/⌘ + K)与路由切换的“最近使用”记录均在此统一挂载。
+ * 命令面板(Ctrl/⌘ + K)在此统一挂载。
  */
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -40,11 +40,6 @@ onMounted(() => {
   document.documentElement.classList.toggle('dark', appStore.dark)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
-
-/** 每次路由解析完成后记录最近使用 */
-router.afterEach((to) => {
-  if (TOOL_MAP.has(String(to.name))) appStore.visitTool(String(to.name))
-})
 </script>
 
 <template>

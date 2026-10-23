@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 左侧边栏
- * 内容:Logo → 收藏 → 最近使用 → 按分类分组的全部工具。
+ * 内容:Logo → 收藏 → 按分类分组的全部工具。
  * 仅从 tools.ts 注册表渲染,自身不维护工具数据。
  */
 import { computed } from 'vue'
@@ -11,7 +11,6 @@ import * as Icons from '@element-plus/icons-vue'
 import type { ToolMeta } from '@/types/tool'
 import { CATEGORIES, TOOLS } from '@/config/tools'
 import { useAppStore } from '@/stores/app'
-import { TOOL_MAP } from '@/config/tools'
 
 const props = defineProps<{ collapsed: boolean }>()
 
@@ -23,11 +22,6 @@ const appStore = useAppStore()
 function icon(name: string): Component | undefined {
   return (Icons as Record<string, Component>)[name]
 }
-
-/** 最近使用过的工具元信息(渲染用) */
-const recentTools = computed<ToolMeta[]>(() =>
-  appStore.recents.map((k) => TOOL_MAP.get(k)).filter(Boolean) as ToolMeta[],
-)
 
 /** 分类 → 工具列表 映射 */
 const grouped = computed(() => {
@@ -57,21 +51,6 @@ function go(tool: ToolMeta) {
         <div
           v-for="t in appStore.favoriteTools"
           :key="'fav-' + t.key"
-          class="nav-item"
-          :class="{ active: route.name === t.key }"
-          @click="go(t)"
-        >
-          <el-icon :size="15"><component :is="icon(t.icon)" /></el-icon>
-          <span class="nav-name">{{ t.name }}</span>
-        </div>
-      </div>
-
-      <!-- 最近使用 -->
-      <div v-if="recentTools.length" class="group">
-        <div class="group-title">最近使用</div>
-        <div
-          v-for="t in recentTools.slice(0, 5)"
-          :key="'recent-' + t.key"
           class="nav-item"
           :class="{ active: route.name === t.key }"
           @click="go(t)"

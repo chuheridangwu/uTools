@@ -5,10 +5,17 @@
 ## 1. 完成清单
 
 - 基础设施:package.json、vite.config.ts、tsconfig.json、index.html、src/env.d.ts、public/favicon.svg。
-- 核心:`src/types/tool.ts`、`src/config/tools.ts`(29 工具注册表)、`src/router/index.ts`(import.meta.glob 动态映射)、`src/stores/app.ts`、`src/styles/index.css`、`src/main.ts`、`src/App.vue`。
+- 核心:`src/types/tool.ts`、`src/config/tools.ts`(27 工具注册表)、`src/router/index.ts`(import.meta.glob 动态映射)、`src/stores/app.ts`、`src/styles/index.css`、`src/main.ts`、`src/App.vue`。
 - 组件:Sidebar、CommandPalette(⌘/Ctrl+K)、ToolCard、ToolPage、JsonTreeNode。
 - utils:`common.ts`(copyText/downloadBlob/downloadText/formatSize=**formatBytes 别名**/baseName/pad2/toNumber/storage)、`image.ts`(loadImage/calcTargetSize/drawImageTo/canvasToBlob/renameWithExt)。
-- 视图:29 个工具 + Home 全部完成并通过类型检查。
+- 视图:27 个工具 + Home 全部完成并通过类型检查。
+- **本地媒体浏览器 `LocalMedia.vue`**(key `local-media`,data 分类):移植 `../local_video.html`(父目录同名文件)并扩展照片支持。
+  - 照片:JPEG/JPG/PNG/WebP/HEIC/HEIF;HEIC/HEIF 用 `heic2any` 前端转码(动态 import,独立 chunk 约 1.35MB,仅遇到 HEIC 时加载)。
+  - 视频:canvas 截帧缩略图 + 连续播放列表(范围=当前目录及子目录)+ 播完自动下一集。
+  - 交互:面包屑导航、当前目录搜索、类型筛选/排序、照片大图(←/→ 切换、Esc 关闭)、全屏播放器。
+  - 所有文件仅通过 Object URL 在内存访问,卸载时统一 revoke,不上传。
+  - **已踩坑(务必注意)**:`onPick` 中必须先把 `input.files` 快照成数组再清空 `input.value`,否则 Blink 会一并清空该 FileList,导致读不到任何文件(表现为“选择文件夹后什么都不显示”)。
+- **已移除功能**:便签、书签管理、程序员计算器三个工具(含视图、注册表条目、life 分类),以及“最近使用”特性(store recents/visitTool、侧边栏与首页区块、路由 afterEach 记录)。
 
 ## 2. 本次会话关键修复(供回溯)
 
@@ -42,12 +49,13 @@
 | gifenc ^1.0.3 | `GIFEncoder() / quantize / applyPalette`;`writeFrame(Uint8Array, w, h, { palette, delay })` |
 | element-plus ^2.14.7 | dark css-vars 已在 styles/index.css 引入 |
 | exifr ^7.1.3 | GPS 在 `data.latitude/longitude` |
+| heic2any ^0.0.4 | `heic2any({ blob, toType: 'image/jpeg', quality })` 返回 `Blob \| Blob[]`;仅 Chromium/Firefox 可用(Safari 可原生解码) |
 
 ## 5. 待办 / 注意事项
 
 - **GitHub 推送未执行**:`gh` CLI 在本机不可用,需用户提供远程仓库地址后 `git remote add origin ... && git push -u origin main`(或确认走 HTTPS 凭据)。
 - 构建警告:vendor-ui(942 KB)与 vendor(1.9 MB,含 jimp)超过 1 MB 提示;如需优化可对 jimp 相关视图按需动态 import 或降级。
-- 快捷键:⌘/Ctrl + K 命令面板;dark 模式、收藏、最近使用持久化(localStorage 前缀 `utools_`)。
+- 快捷键:⌘/Ctrl + K 命令面板;dark 模式、收藏持久化(localStorage 前缀 `utools_`)。
 - 翻译:MyMemory 不支持 auto 语种,当前用 CJK 占比启发式检测;单次请求 ≤500 字符。
 - EyeDropper(屏幕取色)仅 Chromium 系浏览器支持,ColorTool 已做能力判断。
 - dev 端口固定 5199(`server.host: true`)。

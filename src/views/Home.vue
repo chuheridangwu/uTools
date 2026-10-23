@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 首页:品牌 Hero + 收藏/最近使用 + 全部工具按分类网格展示
+ * 首页:品牌 Hero + 收藏 + 全部工具按分类网格展示
  * 卡片数据全部来自 tools.ts 注册表。
  */
 import { computed, ref } from 'vue'
@@ -11,7 +11,7 @@ import type { ToolMeta, ToolCategoryKey } from '@/types/tool'
 import { useAppStore } from '@/stores/app'
 import ToolCard from '@/components/ToolCard.vue'
 import { useRouter } from 'vue-router'
-import { Clock, StarFilled } from '@element-plus/icons-vue'
+import { StarFilled } from '@element-plus/icons-vue'
 
 const appStore = useAppStore()
 const router = useRouter()
@@ -21,13 +21,6 @@ const activeCat = ref<ToolCategoryKey | undefined>(undefined)
 
 /** 收藏的工具(置顶展示) */
 const favs = computed<ToolMeta[]>(() => appStore.favoriteTools)
-
-/** 最近使用(最多 8 个,去掉已在收藏中重复的) */
-const recents = computed<ToolMeta[]>(() =>
-  (appStore.recents.map((k) => TOOLS.find((t) => t.key === k)).filter(Boolean) as ToolMeta[]).filter(
-    (t) => !appStore.isFavorite(t.key),
-  ),
-)
 
 /** 按当前 tab 过滤后的分组 */
 const grouped = computed(() =>
@@ -81,17 +74,6 @@ function countOf(key: ToolCategoryKey): number {
       </h2>
       <div class="grid">
         <ToolCard v-for="t in favs" :key="t.key" :tool="t" />
-      </div>
-    </section>
-
-    <!-- 最近使用 -->
-    <section v-if="recents.length" class="sec">
-      <h2 class="sec-title">
-        <el-icon><Clock /></el-icon>
-        最近使用
-      </h2>
-      <div class="grid">
-        <ToolCard v-for="t in recents" :key="t.key" :tool="t" />
       </div>
     </section>
 

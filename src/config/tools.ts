@@ -14,11 +14,10 @@ export const CATEGORIES: ToolCategory[] = [
   { key: 'dev', label: '开发工具', icon: 'Monitor', desc: 'JSON、代码、正则、API 等开发常用' },
   { key: 'text', label: '文本工具', icon: 'EditPen', desc: '编辑、对比、翻译与写作' },
   { key: 'image', label: '图片工具', icon: 'Picture', desc: '转换、压缩、水印与二维码' },
-  { key: 'data', label: '数据文件', icon: 'Files', desc: 'CSV、书签等数据文件管理' },
-  { key: 'life', label: '效率工具', icon: 'MagicStick', desc: '便签、计算器等日常小工具' },
+  { key: 'data', label: '数据文件', icon: 'Files', desc: 'CSV 等数据文件查看与转换' },
 ]
 
-/** 全部工具注册(共 29 个) */
+/** 全部工具注册(共 27 个) */
 export const TOOLS: ToolMeta[] = [
   // ────────────────────────── 开发工具 ──────────────────────────
   {
@@ -178,30 +177,16 @@ export const TOOLS: ToolMeta[] = [
 
   // ────────────────────────── 数据文件 ──────────────────────────
   {
+    key: 'local-media', path: '/local-media', name: '本地媒体浏览器', icon: 'FolderOpened',
+    category: 'data', accent: '#0ea5e9', isNew: true,
+    short: '浏览本地照片与视频(含 HEIC)', keywords: ['本地', '照片', '视频', 'heic', '相册', 'photo', 'video'],
+    desc: '选择本地文件夹,在浏览器内(不上传)浏览照片与视频:自动缩略图、面包屑导航、搜索筛选,支持 JPEG/PNG/WebP/HEIC/HEIF 照片与连续视频播放。',
+  },
+  {
     key: 'csv-viewer', path: '/csv-viewer', name: 'CSV 查看器', icon: 'Grid',
     category: 'data', accent: '#10b981',
     short: '表格化查看/搜索/导出 JSON', keywords: ['csv', '表格', 'excel', '数据'],
     desc: '上传或粘贴 CSV,自动分隔并生成可搜索、分页的表格视图,支持导出 JSON 或 CSV。',
-  },
-  {
-    key: 'bookmark-manager', path: '/bookmark-manager', name: '书签管理', icon: 'Collection',
-    category: 'data', accent: '#6366f1', isNew: true,
-    short: '导入浏览器书签 HTML 并搜索统计', keywords: ['书签', 'bookmark', 'chrome', '收藏'],
-    desc: '导入 Chrome/Edge 导出的书签 HTML 文件,形成目录树视图,支持搜索、统计与导出 JSON。',
-  },
-
-  // ────────────────────────── 效率工具 ──────────────────────────
-  {
-    key: 'sticky-notes', path: '/sticky-notes', name: '便签', icon: 'Memo',
-    category: 'life', accent: '#fbbf24',
-    short: '本地彩色便签,随心记录', keywords: ['便签', '笔记', '备忘', 'notes'],
-    desc: '纯本地存储的彩色便签墙,支持置顶、搜索与多种颜色,数据保存在浏览器中。',
-  },
-  {
-    key: 'programmer-calc', path: '/programmer-calc', name: '程序员计算器', icon: 'Cpu',
-    category: 'life', accent: '#64748b',
-    short: '2/8/10/16 进制联动 + 位运算', keywords: ['计算器', '进制', 'hex', '位运算', 'calc'],
-    desc: '程序员专属计算器:四进制联动输入,支持与/或/异或/移位等位运算表达式求值。',
   },
 ]
 

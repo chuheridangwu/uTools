@@ -23,6 +23,8 @@ export default defineConfig({
         // 手动分包:把体积较大的第三方库单独拆分,便于浏览器缓存
         manualChunks(id: string) {
           if (id.includes("node_modules")) {
+            // HEIC 解码库体积较大且仅按需使用,交给 Rollup 独立分包
+            if (id.includes("heic2any") || id.includes("libheif")) return undefined;
             if (id.includes("element-plus") || id.includes("@element-plus")) {
               return "vendor-ui"; // UI 框架
             }

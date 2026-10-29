@@ -183,6 +183,12 @@ export const TOOLS: ToolMeta[] = [
     desc: '选择本地文件夹,在浏览器内(不上传)浏览照片与视频:自动缩略图、面包屑导航、搜索筛选,支持 JPEG/PNG/WebP/HEIC/HEIF 照片与连续视频播放。',
   },
   {
+    key: 'local-manga', path: '/local-manga', name: '本地漫画阅读器', icon: 'Reading',
+    category: 'data', accent: '#f43f5e', isNew: true,
+    short: '按话翻阅本地漫画图片', keywords: ['漫画', '阅读器', 'manga', '本地', '翻页', '章节'],
+    desc: '选择包含「话」子文件夹的根目录,纵向连续翻阅图片;左右按钮或键盘 ←/→ 切换上一话/下一话,支持 jpg/png/gif/webp/avif/heic 等,文件不上传。',
+  },
+  {
     key: 'csv-viewer', path: '/csv-viewer', name: 'CSV 查看器', icon: 'Grid',
     category: 'data', accent: '#10b981',
     short: '表格化查看/搜索/导出 JSON', keywords: ['csv', '表格', 'excel', '数据'],

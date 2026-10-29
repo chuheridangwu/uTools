@@ -81,6 +81,11 @@
 ## 6. 会话记录(2026-10-29)
 
 **已做:**
+- **本地漫画阅读器 `LocalManga.vue`**(key `local-manga`,data 分类,`manga.html` 移植):
+  - 交互与原版一致:选择含「话」子文件夹的根目录 → 纵向连续翻阅图片、左右浮动按钮/键盘 ←→ 切话、字段为一话一文件夹。
+  - 与原版差异(站内一致性考虑):(1) 用 `input[webkitdirectory]` 取代 `showDirectoryPicker`(Safari 不支持后者);(2) 排序统一 `naturalCompare`;(3) HEIC/HEIF 单页用 heic2any 本地转码(动态 import + 信号量限制并发 2);(4) 新增章节 `el-select` 直达跳转;(5) 切话时 revoke 上一话全部 Object URL。
+  - 章节定义:根目录一级子文件夹;子文件夹内图片含更深层级(`startsWith` 匹配);根目录直接散落的图片不入话(与原版一致)。
+  - 验证:`vue-tsc` 0 错误、build 通过、dev server http://localhost:5199/local-manga 渲染正常(浏览器实测)。
 - 视频播放器:新增播放列表显示/隐藏按钮(见完成清单对应条目),`vue-tsc` 0 错误后已提交推送(commit `05949e8`)。
 - 配置远程仓库 `origin`(GitHub HTTPS),推送链路已验证可用。
 - 起草并否决了 fswatch + launchd 自动提交方案:`brew install fswatch` 执行中途被用户打断,**未安装成功、未写入任何 LaunchAgent**;如后续发现 `~/Library/LaunchAgents/` 有残留 plist 应删除。

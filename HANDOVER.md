@@ -28,6 +28,11 @@
   - `LocalMedia.vue` 视频播放器底栏新增「隐藏列表 / 显示列表」切换按钮,状态 `showPlaylist = ref(true)`。
   - 播放列表 `<aside>` 用 `v-show`(非 `v-if`)切换,不重建 DOM、不丢缩略图状态;隐藏后 `.video-wrap` 因 `flex: 1` 自动占满全宽。
   - 图标 `Fold` / `Expand`(从 `@element-plus/icons-vue` 引入);状态跨自动连播保留,不随 `playIndex` 重置。
+- **音频播放器**(2026-10-29,同日会话):
+  - `LocalMedia.vue` 新增 `AUDIO_EXTS = ['mp3', 'm4a']`,`MediaItem.kind` 扩展为 `'image' | 'video' | 'audio'`(视频为 `video`)。
+  - 独立音频播放器 overlay(不与视频复用):`openAudio/playAudioIndex/nextAudio/closeAudio`,状态 `audioOpen/audioIndex/audioPlaylist/audioUrl/audioError/showAudioPlaylist`;支持自动连播下一首、Esc 关闭、隐藏/显示列表、下载。
+  - 交互规则:`kindFilter` 加「音频」计数筛选;按类型排序优先级 照片→音频→视频(`kindRank`);打开音频会 `closePlayer()`、打开视频会 `closeAudio()`、`onPick` 两者都关;音频 `prepareThumb` 直接标记 `done` 无缩略图(卡片与列表用 `Headset` 图标占位)。
+  - 音频播放列表范围与视频一致:当前目录及子目录(`audiosUnder`)。
 - **已移除功能**:便签、书签管理、程序员计算器三个工具(含视图、注册表条目、life 分类),以及“最近使用”特性(store recents/visitTool、侧边栏与首页区块、路由 afterEach 记录)。
 
 ## 2. 本次会话关键修复(供回溯)

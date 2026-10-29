@@ -20,6 +20,8 @@ import {
   Picture,
   Search,
   VideoCamera,
+  Fold,
+  Expand,
 } from '@element-plus/icons-vue'
 import ToolPage from '@/components/ToolPage.vue'
 import { formatSize } from '@/utils/common'
@@ -59,6 +61,7 @@ const playerIndex = ref(0)
 const playlist = ref<MediaItem[]>([])
 const videoUrl = ref('')
 const playerError = ref('')
+const showPlaylist = ref(true)
 
 /** 已创建的 Object URL,卸载时统一回收 */
 const urls = new Set<string>()
@@ -536,10 +539,22 @@ onBeforeUnmount(() => {
             <div v-if="playerError" class="video-error">{{ playerError }}</div>
             <div class="video-bar">
               <span class="cap-name">{{ currentVideo?.name }}</span>
-              <el-button size="small" :icon="Download" text bg @click="downloadCurrentVideo">下载</el-button>
+              <div class="video-bar-actions">
+                <el-button
+                  size="small"
+                  :icon="showPlaylist ? Fold : Expand"
+                  text
+                  bg
+                  :title="showPlaylist ? '隐藏播放列表' : '显示播放列表'"
+                  @click="showPlaylist = !showPlaylist"
+                >
+                  {{ showPlaylist ? '隐藏列表' : '显示列表' }}
+                </el-button>
+                <el-button size="small" :icon="Download" text bg @click="downloadCurrentVideo">下载</el-button>
+              </div>
             </div>
           </div>
-          <aside class="playlist">
+          <aside v-show="showPlaylist" class="playlist">
             <div class="pl-title">播放列表 · {{ playlist.length }}</div>
             <div
               v-for="(v, i) in playlist"
@@ -854,6 +869,11 @@ onBeforeUnmount(() => {
   gap: 12px;
   color: #fff;
   font-size: 13px;
+}
+.video-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .playlist {

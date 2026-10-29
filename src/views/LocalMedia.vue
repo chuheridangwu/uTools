@@ -3,6 +3,7 @@
  * 本地媒体浏览器
  * 选择本地文件夹后,完全在浏览器内(不上传)浏览目录:
  *  - 视频:自动截帧生成缩略图,支持连续播放列表与下一集自动播放
+ *  - 音频:mp3 / m4a,独立播放器 + 连续播放列表
  *  - 照片:JPEG / JPG / PNG / WebP / HEIC / HEIF,支持大图查看与左右切换;
  *    HEIC/HEIF 浏览器普遍无法直接解码,由 heic2any 在本地转码后展示
  *  - 面包屑导航、当前目录搜索、类型筛选与排序
@@ -20,6 +21,7 @@ import {
   Picture,
   Search,
   VideoCamera,
+  Headset,
   Fold,
   Expand,
 } from '@element-plus/icons-vue'
@@ -30,6 +32,8 @@ import { formatSize } from '@/utils/common'
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
 /** 常见视频扩展名(能否播放取决于浏览器解码能力) */
 const VIDEO_EXTS = ['mp4', 'm4v', 'webm', 'mov', 'ogv', 'mkv', 'avi', 'wmv', 'flv']
+/** 音频扩展名(按需求限定) */
+const AUDIO_EXTS = ['mp3', 'm4a']
 const HEIC_EXTS = ['heic', 'heif']
 
 interface MediaItem {
@@ -40,7 +44,7 @@ interface MediaItem {
   dir: string
   name: string
   ext: string
-  kind: 'image' | 'video'
+  kind: 'image' | 'video' | 'audio'
   size: number
   /** 缩略图/展示图 Object URL(HEIC 为转码后的 JPEG) */
   thumb: string
@@ -51,7 +55,7 @@ interface MediaItem {
 const files = ref<MediaItem[]>([])
 const segments = ref<string[]>([])
 const search = ref('')
-const kindFilter = ref<'all' | 'image' | 'video'>('all')
+const kindFilter = ref<'all' | 'image' | 'video' | 'audio'>('all')
 const sortBy = ref<'name' | 'size' | 'kind'>('name')
 const inputEl = ref<HTMLInputElement>()
 
@@ -62,6 +66,13 @@ const playlist = ref<MediaItem[]>([])
 const videoUrl = ref('')
 const playerError = ref('')
 const showPlaylist = ref(true)
+
+const audioOpen = ref(false)
+const audioIndex = ref(0)
+const audioPlaylist = ref<MediaItem[]>([])
+const audioUrl = ref('')
+const audioError = ref('')
+const showAudioPlaylist = ref(true)
 
 /** 已创建的 Object URL,卸载时统一回收 */
 const urls = new Set<string>()
@@ -125,7 +136,7 @@ const visibleMedia = computed(() => {
   })
   const cmp = (a: MediaItem, b: MediaItem): number => {
     if (sortBy.value === 'size') return b.size - a.size
-    if (sortBy.value === 'kind') return a.kind === b.kind ? a.name.localeCompare(b.name, 'zh-Hans-CN') : a.kind === 'image' ? -1 : 1
+    if (sortBy.value === 'kind') return a.kind === b.kind ? a.name.localeCompare(b.name, 'zh-Hans-CN') : kindRank[a.kind] - kindRank[b.kind]
     return a.name.localeCompare(b.name, 'zh-Hans-CN')
   }
   return [...list].sort(cmp)
@@ -133,6 +144,9 @@ const visibleMedia = computed(() => {
 
 const photoList = computed(() => visibleMedia.value.filter((f) => f.kind === 'image'))
 const videoList = computed(() => visibleMedia.value.filter((f) => f.kind === 'video'))
+
+/** "按类型"排序时的类型优先级:照片 → 音频 → 视频 */
+const kindRank: Record<MediaItem['kind'], number> = { image: 0, audio: 1, video: 2 }
 
 /** 当前目录及子目录下的全部视频(播放列表范围,与原版一致) */
 const videosUnder = computed(() => {
@@ -143,12 +157,23 @@ const videosUnder = computed(() => {
     .sort((a, b) => a.path.localeCompare(b.path, 'zh-Hans-CN'))
 })
 
+/** 当前目录及子目录下的全部音频(播放列表范围,与视频一致) */
+const audiosUnder = computed(() => {
+  if (!hasFolder.value) return []
+  const cur = currentDir.value
+  return files.value
+    .filter((f) => f.kind === 'audio' && (f.dir === cur || f.dir.startsWith(cur + '/')))
+    .sort((a, b) => a.path.localeCompare(b.path, 'zh-Hans-CN'))
+})
+
 const photoCount = computed(() => directMedia.value.filter((f) => f.kind === 'image').length)
 const videoCount = computed(() => directMedia.value.filter((f) => f.kind === 'video').length)
+const audioCount = computed(() => directMedia.value.filter((f) => f.kind === 'audio').length)
 const totalCount = computed(() => files.value.length)
 
 const currentPhoto = computed(() => (lightboxIndex.value >= 0 ? photoList.value[lightboxIndex.value] : undefined))
 const currentVideo = computed(() => (playerOpen.value ? playlist.value[playerIndex.value] : undefined))
+const currentAudio = computed(() => (audioOpen.value ? audioPlaylist.value[audioIndex.value] : undefined))
 
 /** 面包屑展示文本 */
 const pathText = computed(() => (hasFolder.value ? currentDir.value : '未选择文件夹'))
@@ -161,6 +186,11 @@ function isHeic(item: MediaItem): boolean {
 /** 给单个媒体准备缩略图(带缓存,失败仅标记不打断) */
 async function prepareThumb(item: MediaItem): Promise<void> {
   if (item.thumbState === 'loading' || item.thumbState === 'done') return
+  if (item.kind === 'audio') {
+    // 音频无缩略图,直接标记完成(卡片用图标占位)
+    item.thumbState = 'done'
+    return
+  }
   item.thumbState = 'loading'
   try {
     if (item.kind === 'image') {
@@ -251,6 +281,7 @@ async function onPick(e: Event) {
   disposed = false
   lightboxIndex.value = -1
   closePlayer()
+  closeAudio()
   search.value = ''
   kindFilter.value = 'all'
 
@@ -265,7 +296,13 @@ async function onPick(e: Event) {
     const parts = rel.split('/')
     const name = parts[parts.length - 1]
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
-    const kind = IMAGE_EXTS.includes(ext) ? 'image' : VIDEO_EXTS.includes(ext) ? 'video' : null
+    const kind = IMAGE_EXTS.includes(ext)
+      ? 'image'
+      : AUDIO_EXTS.includes(ext)
+        ? 'audio'
+        : VIDEO_EXTS.includes(ext)
+          ? 'video'
+          : null
     if (!kind) return
     list.push({
       file,
@@ -284,7 +321,7 @@ async function onPick(e: Event) {
   segments.value = [root]
 
   if (!list.length) {
-    ElMessage.warning('该文件夹中没有可浏览的照片或视频')
+    ElMessage.warning('该文件夹中没有可浏览的照片、音频或视频')
     return
   }
   ensureThumbs(visibleMedia.value)
@@ -334,6 +371,7 @@ function downloadCurrentPhoto() {
 
 /* --------------------------- 视频播放 --------------------------- */
 function openVideo(item: MediaItem) {
+  closeAudio()
   const list = videosUnder.value
   const idx = list.findIndex((v) => v.path === item.path)
   playlist.value = list.length ? list : [item]
@@ -378,10 +416,56 @@ function downloadCurrentVideo() {
   a.click()
 }
 
+/* --------------------------- 音频播放 --------------------------- */
+function openAudio(item: MediaItem) {
+  closePlayer()
+  const list = audiosUnder.value
+  const idx = list.findIndex((a) => a.path === item.path)
+  audioPlaylist.value = list.length ? list : [item]
+  playAudioIndex(idx >= 0 ? idx : 0)
+}
+
+function playAudioIndex(index: number) {
+  const item = audioPlaylist.value[index]
+  if (!item) return
+  audioIndex.value = index
+  audioError.value = ''
+  audioOpen.value = true
+  if (audioUrl.value) URL.revokeObjectURL(audioUrl.value)
+  audioUrl.value = track(URL.createObjectURL(item.file))
+}
+
+function nextAudio() {
+  if (audioIndex.value + 1 < audioPlaylist.value.length) playAudioIndex(audioIndex.value + 1)
+}
+
+function closeAudio() {
+  if (audioUrl.value) {
+    URL.revokeObjectURL(audioUrl.value)
+    urls.delete(audioUrl.value)
+    audioUrl.value = ''
+  }
+  audioOpen.value = false
+  audioError.value = ''
+}
+
+function onAudioError() {
+  audioError.value = '该音频编码可能不受当前浏览器支持。'
+}
+
+function downloadCurrentAudio() {
+  const item = currentAudio.value
+  if (!item || !audioUrl.value) return
+  const a = document.createElement('a')
+  a.href = audioUrl.value
+  a.download = item.name
+  a.click()
+}
+
 /* --------------------------- 键盘交互 --------------------------- */
 function onKeydown(e: KeyboardEvent) {
-  if (playerOpen.value) {
-    if (e.key === 'Escape') closePlayer()
+  if (playerOpen.value || audioOpen.value) {
+    if (e.key === 'Escape') (playerOpen.value ? closePlayer : closeAudio)()
     return
   }
   if (lightboxIndex.value < 0) return
@@ -402,8 +486,8 @@ onBeforeUnmount(() => {
   <ToolPage>
     <template #title>本地媒体浏览器</template>
     <template #desc>
-      选择一个本地文件夹,直接在浏览器中浏览照片与视频(文件不会上传)。照片支持 JPEG / JPG / PNG / WebP / HEIC / HEIF,
-      HEIC/HEIF 会在本地转换为可显示格式;视频自动截帧缩略并可连续播放。
+      选择一个本地文件夹,直接在浏览器中浏览照片、音频与视频(文件不会上传)。照片支持 JPEG / JPG / PNG / WebP / HEIC / HEIF,
+      HEIC/HEIF 会在本地转换为可显示格式;音频支持 MP3 / M4A;视频自动截帧缩略并可连续播放。
     </template>
 
     <!-- 选择文件夹 -->
@@ -428,6 +512,7 @@ onBeforeUnmount(() => {
         <el-radio-group v-model="kindFilter" size="small">
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="image">照片 {{ photoCount }}</el-radio-button>
+          <el-radio-button value="audio">音频 {{ audioCount }}</el-radio-button>
           <el-radio-button value="video">视频 {{ videoCount }}</el-radio-button>
         </el-radio-group>
         <el-input
@@ -471,18 +556,19 @@ onBeforeUnmount(() => {
           v-for="m in visibleMedia"
           :key="m.path"
           class="card media"
-          @click="m.kind === 'image' ? openPhoto(m) : openVideo(m)"
+          @click="m.kind === 'image' ? openPhoto(m) : m.kind === 'audio' ? openAudio(m) : openVideo(m)"
         >
           <div class="thumb">
             <img v-if="m.thumb" :src="m.thumb" :alt="m.name" loading="lazy" />
             <div v-else class="thumb-empty">
               <el-icon :size="30" v-if="m.thumbState !== 'error'">
                 <VideoCamera v-if="m.kind === 'video'" />
+                <Headset v-else-if="m.kind === 'audio'" />
                 <Picture v-else />
               </el-icon>
               <span v-if="m.thumbState === 'error'" class="badge-error">无法预览</span>
             </div>
-            <span class="badge">{{ m.kind === 'image' ? (m.ext === 'heic' || m.ext === 'heif' ? 'HEIC' : m.ext.toUpperCase()) : 'VIDEO' }}</span>
+            <span class="badge">{{ m.kind === 'image' ? (m.ext === 'heic' || m.ext === 'heif' ? 'HEIC' : m.ext.toUpperCase()) : m.kind === 'audio' ? m.ext.toUpperCase() : 'VIDEO' }}</span>
           </div>
           <div class="meta">
             <div class="name" :title="m.name">{{ m.name }}</div>
@@ -493,7 +579,7 @@ onBeforeUnmount(() => {
 
       <!-- 空态 -->
       <div v-if="!childFolders.length && !visibleMedia.length" class="placeholder small">
-        <p>当前目录没有匹配的{{ kindFilter === 'image' ? '照片' : kindFilter === 'video' ? '视频' : '媒体文件' }}</p>
+        <p>当前目录没有匹配的{{ kindFilter === 'image' ? '照片' : kindFilter === 'audio' ? '音频' : kindFilter === 'video' ? '视频' : '媒体文件' }}</p>
         <span v-if="search">试试清空搜索关键词</span>
       </div>
     </div>
@@ -566,6 +652,54 @@ onBeforeUnmount(() => {
               <img v-if="v.thumb" :src="v.thumb" class="pl-thumb" :alt="v.name" />
               <div v-else class="pl-thumb pl-empty"><el-icon><VideoCamera /></el-icon></div>
               <span class="pl-name" :title="v.name">{{ v.name }}</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- 音频播放器 -->
+    <teleport to="body">
+      <div v-if="audioOpen" class="overlay audio-overlay" @click.self="closeAudio">
+        <button class="ov-btn close" title="关闭(Esc)" @click="closeAudio"><el-icon><Close /></el-icon></button>
+        <div class="player audio-player">
+          <div class="audio-wrap">
+            <div class="audio-art"><el-icon :size="64"><Headset /></el-icon></div>
+            <div class="audio-title" :title="currentAudio?.name">{{ currentAudio?.name }}</div>
+            <div class="audio-sub">{{ formatSize(currentAudio?.size ?? 0) }} · 第 {{ audioIndex + 1 }} / {{ audioPlaylist.length }} 首</div>
+            <audio
+              :src="audioUrl"
+              controls
+              autoplay
+              @ended="nextAudio"
+              @error="onAudioError"
+            />
+            <div v-if="audioError" class="video-error">{{ audioError }}</div>
+            <div class="video-bar audio-actions">
+              <el-button
+                size="small"
+                :icon="showAudioPlaylist ? Fold : Expand"
+                text
+                bg
+                :title="showAudioPlaylist ? '隐藏播放列表' : '显示播放列表'"
+                @click="showAudioPlaylist = !showAudioPlaylist"
+              >
+                {{ showAudioPlaylist ? '隐藏列表' : '显示列表' }}
+              </el-button>
+              <el-button size="small" :icon="Download" text bg @click="downloadCurrentAudio">下载</el-button>
+            </div>
+          </div>
+          <aside v-show="showAudioPlaylist" class="playlist">
+            <div class="pl-title">播放列表 · {{ audioPlaylist.length }}</div>
+            <div
+              v-for="(a, i) in audioPlaylist"
+              :key="a.path"
+              class="pl-item"
+              :class="{ active: i === audioIndex }"
+              @click="playAudioIndex(i)"
+            >
+              <div class="pl-thumb pl-empty"><el-icon><Headset /></el-icon></div>
+              <span class="pl-name" :title="a.name">{{ a.name }}</span>
             </div>
           </aside>
         </div>
@@ -874,6 +1008,48 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 音频播放器 */
+.audio-player {
+  max-width: 780px;
+}
+.audio-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 6px;
+}
+.audio-art {
+  width: 180px;
+  height: 180px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgb(99 102 241 / 55%), rgb(99 102 241 / 12%));
+  color: #fff;
+}
+.audio-title {
+  max-width: 100%;
+  color: #fff;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audio-sub {
+  color: rgb(255 255 255 / 60%);
+  font-size: 12px;
+}
+.audio-wrap audio {
+  width: 100%;
+}
+.audio-actions {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .playlist {

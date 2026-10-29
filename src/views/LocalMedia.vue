@@ -112,6 +112,11 @@ const videoLimit = makeSemaphore(3)
 const currentDir = computed(() => segments.value.join('/'))
 const hasFolder = computed(() => segments.value.length > 0)
 
+/** Finder 风格自然排序:数字按数值比较(1,2,…,10,100),而不是字典序(1,10,100,2) */
+function naturalCompare(a: string, b: string): number {
+  return a.localeCompare(b, 'zh-Hans-CN', { numeric: true })
+}
+
 const childFolders = computed<string[]>(() => {
   if (!hasFolder.value) return []
   const cur = currentDir.value
@@ -120,7 +125,7 @@ const childFolders = computed<string[]>(() => {
     if (f.dir === cur || !f.dir.startsWith(cur + '/')) continue
     set.add(f.dir.slice(cur.length + 1).split('/')[0])
   }
-  return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+  return [...set].sort(naturalCompare)
 })
 
 /** 当前目录(不含子目录)的全部媒体 */
@@ -136,8 +141,8 @@ const visibleMedia = computed(() => {
   })
   const cmp = (a: MediaItem, b: MediaItem): number => {
     if (sortBy.value === 'size') return b.size - a.size
-    if (sortBy.value === 'kind') return a.kind === b.kind ? a.name.localeCompare(b.name, 'zh-Hans-CN') : kindRank[a.kind] - kindRank[b.kind]
-    return a.name.localeCompare(b.name, 'zh-Hans-CN')
+    if (sortBy.value === 'kind') return a.kind === b.kind ? naturalCompare(a.name, b.name) : kindRank[a.kind] - kindRank[b.kind]
+    return naturalCompare(a.name, b.name)
   }
   return [...list].sort(cmp)
 })
@@ -154,7 +159,7 @@ const videosUnder = computed(() => {
   const cur = currentDir.value
   return files.value
     .filter((f) => f.kind === 'video' && (f.dir === cur || f.dir.startsWith(cur + '/')))
-    .sort((a, b) => a.path.localeCompare(b.path, 'zh-Hans-CN'))
+    .sort((a, b) => naturalCompare(a.path, b.path))
 })
 
 /** 当前目录及子目录下的全部音频(播放列表范围,与视频一致) */
@@ -163,7 +168,7 @@ const audiosUnder = computed(() => {
   const cur = currentDir.value
   return files.value
     .filter((f) => f.kind === 'audio' && (f.dir === cur || f.dir.startsWith(cur + '/')))
-    .sort((a, b) => a.path.localeCompare(b.path, 'zh-Hans-CN'))
+    .sort((a, b) => naturalCompare(a.path, b.path))
 })
 
 const photoCount = computed(() => directMedia.value.filter((f) => f.kind === 'image').length)

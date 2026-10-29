@@ -86,7 +86,8 @@
 - 起草并否决了 fswatch + launchd 自动提交方案:`brew install fswatch` 执行中途被用户打断,**未安装成功、未写入任何 LaunchAgent**;如后续发现 `~/Library/LaunchAgents/` 有残留 plist 应删除。
 
 **踩过的坑:**
-- 无新坑。注意工具使用细节:编辑之前未在本次会话读过的文件时,`find/replace` 必须基于精确原文,或直接 `read` 后再改,否则会匹配失败。
+- **文件名排序与 Finder 不一致**:`localeCompare(x, 'zh-Hans-CN')` 默认数字按字典序(1,10,100,2),Folders 里的剧集如 `10 - …`、`100 - …` 全排在 "1" 开头。已在 `LocalMedia.vue` 增加 `naturalCompare()`(`{ numeric: true }`),替换全部 5 处比较(子文件夹、网格名称排序、视频/音频播放列表路径排序)——**以后新增排序一律用 `naturalCompare`,不要再直接写 localeCompare**。
+- 注意工具使用细节:编辑之前未在本次会话读过的文件时,`find/replace` 必须基于精确原文,或直接 `read` 后再改,否则会匹配失败。
 - **git 推 GitHub 连不上(端口 443 超时 / HTTP2 framing layer 错误)**:本机走系统代理(Clash 系,`127.0.0.1:7897`),但 git CLI 不读 macOS 系统代理设置。解决:`git -c http.proxy=http://127.0.0.1:7897 push origin main`。以后凡 push 失败先试这个;不要把 proxy 写死进 git config(代理软件没开会反而断链)。
 
 **用户决策(尚未做):**

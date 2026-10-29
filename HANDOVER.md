@@ -82,6 +82,7 @@
 
 **踩过的坑:**
 - 无新坑。注意工具使用细节:编辑之前未在本次会话读过的文件时,`find/replace` 必须基于精确原文,或直接 `read` 后再改,否则会匹配失败。
+- **git 推 GitHub 连不上(端口 443 超时 / HTTP2 framing layer 错误)**:本机走系统代理(Clash 系,`127.0.0.1:7897`),但 git CLI 不读 macOS 系统代理设置。解决:`git -c http.proxy=http://127.0.0.1:7897 push origin main`。以后凡 push 失败先试这个;不要把 proxy 写死进 git config(代理软件没开会反而断链)。
 
 **用户决策(尚未做):**
 - 用户决定**不**部署任何自动提交的永久机制,改为「AI 每次修改后手动 commit+push」,约定见第 0 节。

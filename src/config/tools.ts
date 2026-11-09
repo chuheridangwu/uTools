@@ -15,6 +15,7 @@ export const CATEGORIES: ToolCategory[] = [
   { key: 'text', label: '文本工具', icon: 'EditPen', desc: '编辑、对比、翻译与写作' },
   { key: 'image', label: '图片工具', icon: 'Picture', desc: '转换、压缩、水印与二维码' },
   { key: 'data', label: '数据文件', icon: 'Files', desc: 'CSV 等数据文件查看与转换' },
+  { key: 'lan', label: '局域网', icon: 'Wifi', desc: '同网设备直连互传文件与文本' },
 ]
 
 /** 全部工具注册(共 27 个) */
@@ -184,7 +185,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     key: 'lan-transfer', path: '/lan-transfer', name: '局域网文件直传', icon: 'Connection',
-    category: 'dev', accent: '#8b5cf6', isNew: true,
+    category: 'lan', accent: '#8b5cf6', isNew: true,
     short: '同网设备直连互传文件', keywords: ['局域网', '传输', '互传', '直连', 'webrtc', 'airdrop', '快传', 'airdrop', '面对面'],
     desc: '同一 WiFi 下打开页面即出现在线设备清单(随机动物昵称),点连接对方接受后直连互传文件与文本;WebRTC 点对点不经服务器,支持拖拽、进度与速度显示,公共信令不可达时可用手动配对码兜底。',
   },

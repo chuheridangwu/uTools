@@ -93,6 +93,7 @@
   - **重要环境事实(踩坑)**:OpenCode 内置 Review 浏览器**没有可用的 WebRTC 能力**(本机最小化环回测试中 localDescription 无任何 candidate,ICE 恒为 new)——自动化测不了真实连接,只有 UI/信令流程可测(已测:大厅互见、邀请弹窗、接受信令)。**真实连通性必须由用户在真 Chrome/手机上验证;写进文档避免下次会话误判为代码 bug 而浪费时间**。
   - README 的「纯前端工具」约束:lan-transfer 使用了第三方公共 MQTT 中继用于握手,文件内容不走中继——desc 里已注明。
   - 2026-11-09 补充:大厅顶部新增「本页网址二维码」(`location.origin + pathname`,`renderQr` 生成),手机扫码直接打开本页;本地 dev 时指向 localhost,部署后自动为正式域名。
+  - 2026-11-09 补充:新增独立分类 `lan`「局域网」(`ToolCategoryKey` 扩展 + CATEGORIES 尾部),lan-transfer 从 dev 迁入;分类是单一数据源,首页 tab/侧边栏/命令面板自动生效。**用户再次强调:每次修改后必须主动 commit + push(见第 0 节)**。
 - 视频播放器:新增播放列表显示/隐藏按钮(见完成清单对应条目),`vue-tsc` 0 错误后已提交推送(commit `05949e8`)。
 - 配置远程仓库 `origin`(GitHub HTTPS),推送链路已验证可用。
 - 起草并否决了 fswatch + launchd 自动提交方案:`brew install fswatch` 执行中途被用户打断,**未安装成功、未写入任何 LaunchAgent**;如后续发现 `~/Library/LaunchAgents/` 有残留 plist 应删除。

@@ -5,7 +5,7 @@
  */
 
 /** 工具分类 key */
-export type ToolCategoryKey = 'dev' | 'text' | 'image' | 'data' | 'life'
+export type ToolCategoryKey = 'dev' | 'text' | 'image' | 'data' | 'life' | 'lan'
 
 /** 工具分类信息 */
 export interface ToolCategory {

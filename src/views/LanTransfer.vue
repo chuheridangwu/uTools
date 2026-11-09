@@ -89,6 +89,10 @@ const mode = ref<Mode>('lobby')
 const lobbyState = ref<'connecting' | 'ok' | 'error'>('connecting')
 let lobbyJoined = false
 const peers = ref<Peer[]>([])
+
+/** 本页网址二维码:手机扫码直接打开 */
+const pageUrl = ref(window.location.origin + window.location.pathname)
+const pageQr = ref('')
 const connected = ref(false)
 const peerName = ref('')
 const busy = ref(false)
@@ -760,6 +764,7 @@ function resetManual() {
 
 onMounted(() => {
   if (mode.value === 'lobby') void joinLobby()
+  void renderQr(pageUrl.value).then((qr) => { pageQr.value = qr })
 })
 
 </script>
@@ -790,6 +795,19 @@ onMounted(() => {
             <template v-else-if="lobbyState === 'error'">公共大厅不可达,可切到「手动配对码」</template>
             <template v-else>当前在线设备 {{ peers.length + 1 }} 台(等一会儿别人的名字就会出现)</template>
           </span>
+        </div>
+
+        <!-- 本页网址二维码:手机扫码直接打开 -->
+        <div class="qr-row">
+          <img v-if="pageQr" :src="pageQr" class="qr-img" alt="本页网址二维码" />
+          <div class="qr-main">
+            <div class="qr-title">手机扫码打开本页</div>
+            <div class="qr-url" :title="pageUrl">{{ pageUrl }}</div>
+            <div class="qr-actions">
+              <el-button size="small" :icon="CopyDocument" @click="copyText(pageUrl)">复制网址</el-button>
+              <span class="hint">同一 WiFi 下扫码即可加入;本地开发时二维码指向 localhost</span>
+            </div>
+          </div>
         </div>
 
         <!-- 本机 -->
@@ -1041,6 +1059,47 @@ onMounted(() => {
   border-radius: 10px;
   margin-bottom: 10px;
   color: var(--el-text-color-regular);
+}
+.qr-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in srgb, var(--el-color-primary) 40%, var(--card-border));
+  border-radius: 10px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--el-color-primary) 4%, var(--el-bg-color));
+}
+.qr-img {
+  width: 88px;
+  height: 88px;
+  border-radius: 8px;
+  flex: none;
+  background: #fff;
+  padding: 4px;
+}
+.qr-main {
+  flex: 1;
+  min-width: 0;
+}
+.qr-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.qr-url {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qr-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .device.self {
   background: color-mix(in srgb, var(--el-color-primary) 6%, var(--el-bg-color));

@@ -183,6 +183,12 @@ export const TOOLS: ToolMeta[] = [
     desc: '选择本地文件夹,在浏览器内(不上传)浏览照片与视频:自动缩略图、面包屑导航、搜索筛选,支持 JPEG/PNG/WebP/HEIC/HEIF 照片与连续视频播放。',
   },
   {
+    key: 'lan-transfer', path: '/lan-transfer', name: '局域网文件直传', icon: 'Connection',
+    category: 'dev', accent: '#8b5cf6', isNew: true,
+    short: '同网设备直连互传文件', keywords: ['局域网', '传输', '互传', '直连', 'webrtc', 'airdrop', '快传', 'airdrop', '面对面'],
+    desc: '同一 WiFi 下打开页面即出现在线设备清单(随机动物昵称),点连接对方接受后直连互传文件与文本;WebRTC 点对点不经服务器,支持拖拽、进度与速度显示,公共信令不可达时可用手动配对码兜底。',
+  },
+  {
     key: 'local-manga', path: '/local-manga', name: '本地漫画阅读器', icon: 'Reading',
     category: 'data', accent: '#f43f5e', isNew: true,
     short: '按话翻阅本地漫画图片', keywords: ['漫画', '阅读器', 'manga', '本地', '翻页', '章节'],

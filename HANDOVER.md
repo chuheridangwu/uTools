@@ -86,6 +86,12 @@
   - 与原版差异(站内一致性考虑):(1) 用 `input[webkitdirectory]` 取代 `showDirectoryPicker`(Safari 不支持后者);(2) 排序统一 `naturalCompare`;(3) HEIC/HEIF 单页用 heic2any 本地转码(动态 import + 信号量限制并发 2);(4) 新增章节 `el-select` 直达跳转;(5) 切话时 revoke 上一话全部 Object URL。
   - 章节定义:根目录一级子文件夹;子文件夹内图片含更深层级(`startsWith` 匹配);根目录直接散落的图片不入话(与原版一致)。
   - 验证:`vue-tsc` 0 错误、build 通过、dev server http://localhost:5199/local-manga 渲染正常(浏览器实测)。
+- **局域网文件直传 `LanTransfer.vue`**(key `lan-transfer`,dev 分类,依赖新增 `mqtt@^5.js`)(2026-11-09):
+  - UX 对标找Tab「局域网文件共享」(用户提供截图):随机动物昵称(重名自动加序号)、在线设备大厅、点连接 → 对方 ElMessageBox 接受/拒绝(拒绝时发起端提示)、接受后进入双面板(发送:点击/拖拽选择;接收:进度+保存),双方可同时收发,另有文本互传。
+  - 架构:在线名单 + 配对信令(invite/accept/reject/offer/answer/ice)走公共 MQTT `wss://broker.emqx.io:8084/mqtt`(主题 `utools/lanx/lobby/v1` 与 `utools/lanx/sig/v1/<id>`),**文件数据本体走 WebRTC DataChannel 点对点不经服务器**;MQTT 动态 import(lazy chunk)。
+  - 手动配对兜底(切换按钮):复制粘贴压缩 SDP 码(CompressionStream deflate-raw 前缀 LT1/LT0)+ 二维码,用于 MQTT 不可达场景;两套模式复用同一传输协议(meta→64KB chunks→done/ack,bufferedAmount 背压 4MB/2MB)。
+  - **重要环境事实(踩坑)**:OpenCode 内置 Review 浏览器**没有可用的 WebRTC 能力**(本机最小化环回测试中 localDescription 无任何 candidate,ICE 恒为 new)——自动化测不了真实连接,只有 UI/信令流程可测(已测:大厅互见、邀请弹窗、接受信令)。**真实连通性必须由用户在真 Chrome/手机上验证;写进文档避免下次会话误判为代码 bug 而浪费时间**。
+  - README 的「纯前端工具」约束:lan-transfer 使用了第三方公共 MQTT 中继用于握手,文件内容不走中继——desc 里已注明。
 - 视频播放器:新增播放列表显示/隐藏按钮(见完成清单对应条目),`vue-tsc` 0 错误后已提交推送(commit `05949e8`)。
 - 配置远程仓库 `origin`(GitHub HTTPS),推送链路已验证可用。
 - 起草并否决了 fswatch + launchd 自动提交方案:`brew install fswatch` 执行中途被用户打断,**未安装成功、未写入任何 LaunchAgent**;如后续发现 `~/Library/LaunchAgents/` 有残留 plist 应删除。

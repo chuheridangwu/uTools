@@ -616,9 +616,14 @@ async function unpackCode(code: string): Promise<RTCSessionDescriptionInit> {
   return JSON.parse(trimmed)
 }
 
-async function renderQr(text: string): Promise<string> {
+async function renderQr(text: string, opts?: { width?: number; ec?: 'L' | 'M' }): Promise<string> {
   try {
-    return await QRCode.toDataURL(text, { width: 220, margin: 1, errorCorrectionLevel: 'M' })
+    // 长内容(配对码 ~500 字符)必须高分辨率生成 + 低纠错,否则模块过密扫不出来
+    return await QRCode.toDataURL(text, {
+      width: opts?.width ?? 600,
+      margin: 2,
+      errorCorrectionLevel: opts?.ec ?? 'L',
+    })
   } catch {
     return ''
   }
@@ -768,7 +773,7 @@ function resetManual() {
 
 onMounted(() => {
   if (mode.value === 'lobby') void joinLobby()
-  void renderQr(pageUrl.value).then((qr) => { pageQr.value = qr })
+  void renderQr(pageUrl.value, { width: 400, ec: 'M' }).then((qr) => { pageQr.value = qr })
 })
 
 </script>
@@ -1269,11 +1274,14 @@ onMounted(() => {
   align-items: flex-start;
 }
 .code-qr {
-  width: 110px;
-  height: 110px;
+  width: 240px;
+  max-width: 60vw;
+  height: auto;
   border-radius: 8px;
   border: 1px solid var(--card-border);
   flex: none;
+  background: #fff;
+  padding: 6px;
 }
 .code-main {
   flex: 1;

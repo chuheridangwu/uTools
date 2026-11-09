@@ -174,10 +174,12 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('click', closeMenu)
   document.documentElement.classList.toggle('dark', appStore.dark)
+  clockTimer = window.setInterval(() => { clock.value = new Date() }, 1000)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('click', closeMenu)
+  if (clockTimer) clearInterval(clockTimer)
 })
 
 function toggleDark() {
@@ -194,12 +196,38 @@ function appMeta(key: string): DesktopAppMeta | undefined {
 }
 
 const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
+
+/* ------------------------------ 桌面时钟 ------------------------------ */
+const clock = ref(new Date())
+let clockTimer: number | null = null
+const clockTime = computed(() => {
+  const d = clock.value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+})
+const clockDate = computed(() =>
+  new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(clock.value),
+)
+
+/* ------------------------------ 打开方式 ------------------------------ */
+function onTileClick(item: DesktopItem) {
+  if (!desktop.doubleClickOpen) openItem(item)
+}
+function onTileDblClick(item: DesktopItem) {
+  if (desktop.doubleClickOpen) openItem(item)
+}
 </script>
 
 <template>
   <div class="desktop" :class="{ 'glass-on': desktop.glass }" :style="{ background: desktop.wallpaperStyle }">
     <!-- 暗色时加深遮罩保证可读性 -->
     <div class="dim" :class="{ on: appStore.dark }" />
+
+    <!-- 桌面时钟 -->
+    <div v-if="desktop.showClock" class="clock glass">
+      <div class="clock-time">{{ clockTime }}</div>
+      <div class="clock-date">{{ clockDate }}</div>
+    </div>
 
     <!-- 中央搜索 -->
     <div class="search-wrap">
@@ -235,7 +263,8 @@ const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
         @dragover.prevent
         @drop.prevent="onDrop"
         @dragend="onDrop"
-        @click="openItem(item)"
+        @click="onTileClick(item)"
+        @dblclick="onTileDblClick(item)"
         @contextmenu="onContext($event, item)"
       >
         <div class="tile-icon glass" :style="iconSizeStyle()">
@@ -244,7 +273,7 @@ const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
           </el-icon>
           <span v-else class="site-letter" :style="{ color: '#fff', background: item.accent }">{{ siteInitial(item) }}</span>
         </div>
-        <span class="tile-name">{{ item.name }}</span>
+        <span v-if="desktop.showLabels" class="tile-name">{{ item.name }}</span>
       </div>
     </div>
 
@@ -341,6 +370,32 @@ const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
   background: rgb(255 255 255 / 14%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+
+/* 桌面时钟 */
+.clock {
+  position: absolute;
+  top: 18px;
+  left: 22px;
+  padding: 12px 18px;
+  border-radius: 16px;
+  color: #fff;
+  text-align: left;
+  pointer-events: none;
+  z-index: 5;
+}
+.clock-time {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 35%);
+}
+.clock-date {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgb(255 255 255 / 85%);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 35%);
 }
 
 /* 搜索 */

@@ -69,6 +69,32 @@ async function resetLayout() {
 function previewStyle(key: Exclude<WallpaperPreset, 'custom'>): string {
   return WALLPAPERS[key]
 }
+
+/* ------------------------------ 导入 / 导出配置 ------------------------------ */
+const importInput = ref<HTMLInputElement>()
+
+function exportConfig() {
+  const blob = new Blob([desktop.exportConfig()], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'utools-desktop.json'
+  a.click()
+  URL.revokeObjectURL(a.href)
+  ElMessage.success('已导出配置')
+}
+
+function onImport(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (desktop.importConfig(String(reader.result))) ElMessage.success('已导入配置')
+    else ElMessage.error('配置文件格式不正确')
+  }
+  reader.readAsText(file)
+}
 </script>
 
 <template>
@@ -124,11 +150,28 @@ function previewStyle(key: Exclude<WallpaperPreset, 'custom'>): string {
         <span class="row-label">毛玻璃效果</span>
         <el-switch v-model="desktop.glass" @update:model-value="desktop.persist()" />
       </div>
+      <div class="row-between">
+        <span class="row-label">显示图标名称</span>
+        <el-switch :model-value="desktop.showLabels" @update:model-value="desktop.setShowLabels($event as boolean)" />
+      </div>
+      <div class="row-between">
+        <span class="row-label">双击打开应用</span>
+        <el-switch :model-value="desktop.doubleClickOpen" @update:model-value="desktop.setDoubleClickOpen($event as boolean)" />
+      </div>
+      <div class="row-between">
+        <span class="row-label">显示桌面时钟</span>
+        <el-switch :model-value="desktop.showClock" @update:model-value="desktop.setShowClock($event as boolean)" />
+      </div>
     </div>
 
     <div class="sec">
       <div class="sec-title">维护</div>
-      <el-button size="small" @click="resetLayout">重置桌面布局</el-button>
+      <div class="maint-row">
+        <el-button size="small" @click="resetLayout">重置桌面布局</el-button>
+        <el-button size="small" @click="exportConfig">导出配置</el-button>
+        <el-button size="small" @click="importInput?.click()">导入配置</el-button>
+        <input ref="importInput" type="file" accept="application/json,.json" hidden @change="onImport" />
+      </div>
       <p class="tip">桌面布局、Dock、壁纸、收藏等全部保存在本机浏览器,不会上传。</p>
     </div>
   </el-drawer>
@@ -178,6 +221,11 @@ function previewStyle(key: Exclude<WallpaperPreset, 'custom'>): string {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+}
+.maint-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .row-label {
   font-size: 13px;

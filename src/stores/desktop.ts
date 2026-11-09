@@ -40,6 +40,9 @@ interface DesktopState {
   wallpaper: { preset: WallpaperPreset; custom?: string }
   iconSize: 's' | 'm' | 'l'
   glass: boolean
+  showLabels: boolean
+  doubleClickOpen: boolean
+  showClock: boolean
 }
 
 /** 默认桌面:全部站内工具 + 全部新应用(首次进入时种子) */
@@ -69,6 +72,9 @@ export const useDesktopStore = defineStore('utools-desktop', {
     wallpaper: storage.get<{ preset: WallpaperPreset; custom?: string }>('desktop-wallpaper', { preset: 'aurora' }),
     iconSize: storage.get<'s' | 'm' | 'l'>('desktop-icon-size', 'm'),
     glass: storage.get<boolean>('desktop-glass', true),
+    showLabels: storage.get<boolean>('desktop-show-labels', true),
+    doubleClickOpen: storage.get<boolean>('desktop-dblclick-open', false),
+    showClock: storage.get<boolean>('desktop-show-clock', true),
   }),
 
   getters: {
@@ -91,6 +97,9 @@ export const useDesktopStore = defineStore('utools-desktop', {
       storage.set('desktop-wallpaper', this.wallpaper)
       storage.set('desktop-icon-size', this.iconSize)
       storage.set('desktop-glass', this.glass)
+      storage.set('desktop-show-labels', this.showLabels)
+      storage.set('desktop-dblclick-open', this.doubleClickOpen)
+      storage.set('desktop-show-clock', this.showClock)
     },
 
     setMode(mode: DesktopState['mode']) {
@@ -153,6 +162,59 @@ export const useDesktopStore = defineStore('utools-desktop', {
     setGlass(v: boolean) {
       this.glass = v
       this.persist()
+    },
+
+    setShowLabels(v: boolean) {
+      this.showLabels = v
+      this.persist()
+    },
+
+    setDoubleClickOpen(v: boolean) {
+      this.doubleClickOpen = v
+      this.persist()
+    },
+
+    setShowClock(v: boolean) {
+      this.showClock = v
+      this.persist()
+    },
+
+    /** 导出当前桌面配置为 JSON 字符串 */
+    exportConfig(): string {
+      return JSON.stringify(
+        {
+          version: 1,
+          items: this.items,
+          dock: this.dock,
+          wallpaper: this.wallpaper,
+          iconSize: this.iconSize,
+          glass: this.glass,
+          showLabels: this.showLabels,
+          doubleClickOpen: this.doubleClickOpen,
+          showClock: this.showClock,
+        },
+        null,
+        2,
+      )
+    },
+
+    /** 导入桌面配置(宽松校验,忽略未知字段) */
+    importConfig(json: string): boolean {
+      try {
+        const c = JSON.parse(json)
+        if (Array.isArray(c.items)) this.items = c.items
+        if (Array.isArray(c.dock)) this.dock = c.dock
+        if (c.wallpaper && typeof c.wallpaper.preset === 'string') this.wallpaper = c.wallpaper
+        if (c.iconSize === 's' || c.iconSize === 'm' || c.iconSize === 'l') this.iconSize = c.iconSize
+        if (typeof c.glass === 'boolean') this.glass = c.glass
+        if (typeof c.showLabels === 'boolean') this.showLabels = c.showLabels
+        if (typeof c.doubleClickOpen === 'boolean') this.doubleClickOpen = c.doubleClickOpen
+        if (typeof c.showClock === 'boolean') this.showClock = c.showClock
+        this.persist()
+        return true
+      } catch {
+        return false
+      }
     },
 
     /** 重置桌面布局(保留模式与壁纸) */

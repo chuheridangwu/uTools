@@ -197,7 +197,7 @@ const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
 </script>
 
 <template>
-  <div class="desktop" :style="{ background: desktop.wallpaperStyle }">
+  <div class="desktop" :class="{ 'glass-on': desktop.glass }" :style="{ background: desktop.wallpaperStyle }">
     <!-- 暗色时加深遮罩保证可读性 -->
     <div class="dim" :class="{ on: appStore.dark }" />
 
@@ -333,10 +333,14 @@ const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
   background: rgb(0 0 0 / 35%);
 }
 .glass {
+  background: rgb(255 255 255 / 24%);
+  border: 1px solid rgb(255 255 255 / 22%);
+}
+/* 毛玻璃开关:开启时才应用模糊与更透的底色 */
+.glass-on .glass {
   background: rgb(255 255 255 / 14%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgb(255 255 255 / 18%);
 }
 
 /* 搜索 */

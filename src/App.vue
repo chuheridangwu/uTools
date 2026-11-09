@@ -6,14 +6,17 @@
  */
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Menu, Moon, Sunny, Search, HomeFilled } from '@element-plus/icons-vue'
+import { Menu, Moon, Sunny, Search, HomeFilled, Monitor } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
+import { useDesktopStore } from '@/stores/desktop'
 import { TOOL_MAP, TOOLS } from '@/config/tools'
+import DesktopHome from '@/components/desktop/DesktopHome.vue'
 
 /** 工具总数(供状态栏展示) */
 const TOOLS_COUNT = TOOLS.length
 
 const appStore = useAppStore()
+const desktop = useDesktopStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -43,7 +46,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <el-container class="app-shell">
+  <!-- 桌面模式:全屏桌面导航(找Tab 式) -->
+  <DesktopHome v-if="desktop.mode === 'desktop'" />
+
+  <!-- 经典模式:侧边栏 + 卡片 -->
+  <el-container v-else class="app-shell">
     <!-- 左侧导航 -->
     <Sidebar :collapsed="collapsed" />
 
@@ -84,6 +91,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <el-tooltip content="明暗主题" placement="bottom">
           <el-button text circle @click="appStore.toggleDark()">
             <el-icon :size="17"><Moon v-if="!appStore.dark" /><Sunny v-else /></el-icon>
+          </el-button>
+        </el-tooltip>
+
+        <!-- 桌面模式 -->
+        <el-tooltip content="切换到桌面模式" placement="bottom">
+          <el-button text circle @click="desktop.setMode('desktop')">
+            <el-icon :size="17"><Monitor /></el-icon>
           </el-button>
         </el-tooltip>
       </header>

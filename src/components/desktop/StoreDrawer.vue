@@ -3,12 +3,18 @@
  * 应用商店抽屉(模仿找Tab 应用商店):
  * 分类浏览站内工具与桌面应用,添加到桌面 / 从桌面移除。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, type Component } from 'vue'
+import * as ElIcons from '@element-plus/icons-vue'
 import { Check, CirclePlus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useDesktopStore } from '@/stores/desktop'
 import { CATEGORIES, TOOLS } from '@/config/tools'
 import { DESKTOP_APPS } from '@/config/desktopApps'
+
+/** 图标名 → 组件(找不到回退 Grid) */
+function iconOf(name: string): Component {
+  return (ElIcons as unknown as Record<string, Component>)[name] ?? ElIcons.Grid
+}
 
 const visible = defineModel<boolean>({ required: true })
 const desktop = useDesktopStore()
@@ -17,6 +23,18 @@ const emit = defineEmits<{ open: [key: string] }>()
 type Kind = 'all' | 'tool' | 'app'
 const kind = ref<Kind>('all')
 const cat = ref<string>('all')
+
+/** 统一分类元数据:工具分类 + 应用专属分类(效率/设计/生活) */
+const CAT_META = [
+  ...CATEGORIES.map((c) => ({ key: c.key, label: c.label })),
+  { key: 'efficiency', label: '效率工具' },
+  { key: 'design', label: '设计资源' },
+  { key: 'life', label: '生活实用' },
+]
+/** 把应用的中文分类映射到统一 key */
+function appCatKey(label: string): string {
+  return CAT_META.find((c) => c.label === label)?.key ?? label
+}
 
 interface Row {
   key: string
@@ -47,15 +65,13 @@ const rows = computed<Row[]>(() => {
     desc: a.desc,
     icon: a.icon,
     accent: a.accent,
-    category: a.category,
+    category: appCatKey(a.category),
     kind: 'app',
   }))
   return [...apps, ...tools]
     .filter((r) => kind.value === 'all' || r.kind === kind.value)
     .filter((r) => cat.value === 'all' || r.category === cat.value)
 })
-
-const CAT_LABELS = CATEGORIES.map((c) => ({ key: c.key, label: c.label }))
 
 function added(key: string): boolean {
   return desktop.isOnDesktop(key)
@@ -90,7 +106,7 @@ function openNow(key: string) {
     <div class="cat-row">
       <button class="cat" :class="{ on: cat === 'all' }" @click="cat = 'all'">全部</button>
       <button
-        v-for="c in CAT_LABELS"
+        v-for="c in CAT_META"
         :key="c.key"
         class="cat"
         :class="{ on: cat === c.key }"
@@ -103,7 +119,7 @@ function openNow(key: string) {
     <div class="list">
       <div v-for="r in rows" :key="r.key" class="row">
         <span class="row-icon" :style="{ background: r.accent + '22', color: r.accent }">
-          {{ r.name.slice(0, 1) }}
+          <el-icon :size="18"><component :is="iconOf(r.icon)" /></el-icon>
         </span>
         <div class="row-meta">
           <div class="row-name">{{ r.name }} <span class="row-kind">{{ r.kind === 'app' ? '应用' : '工具' }}</span></div>

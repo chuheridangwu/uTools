@@ -13,7 +13,7 @@ export interface DesktopAppMeta {
   desc: string
   icon: string        // Element Plus 图标名
   accent: string
-  category: '效率工具' | '开发工具' | '生活实用'
+  category: '效率工具' | '开发工具' | '设计资源' | '生活实用'
   comp: () => Promise<Component>
 }
 
@@ -207,6 +207,46 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     accent: '#14b8a6',
     category: '生活实用',
     comp: () => import('@/views/apps/WheelPicker.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'gradient-generator',
+    name: 'CSS 渐变生成器',
+    short: '可视化调渐变出 CSS',
+    desc: '线性 / 径向渐变可视化编辑,多色标与角度调节,内置常用预设与随机生成,实时输出可直接使用的 CSS 代码。',
+    icon: 'MagicStick',
+    accent: '#8b5cf6',
+    category: '设计资源',
+    comp: () => import('@/views/apps/GradientGenerator.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'shadow-generator',
+    name: '阴影 / 圆角生成器',
+    short: 'box-shadow 可视化调节',
+    desc: '调节 box-shadow 的偏移、模糊、扩散、颜色与内阴影,并设置圆角,支持双层阴影与多种预设,一键复制 CSS。',
+    icon: 'Brush',
+    accent: '#0ea5e9',
+    category: '设计资源',
+    comp: () => import('@/views/apps/ShadowGenerator.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'palette-generator',
+    name: '配色方案',
+    short: '一键生成和谐配色',
+    desc: '以基准色按 HSL 色轮规律生成同色系、邻近色、互补色、三分色、四方色等和谐配色,点击色块复制 HEX。',
+    icon: 'SoldOut',
+    accent: '#ec4899',
+    category: '设计资源',
+    comp: () => import('@/views/apps/PaletteGenerator.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'sticky-notes',
+    name: '便签墙',
+    short: '彩色便签随手记',
+    desc: '像便利贴一样记录想法与待办,支持改色、删除与自动保存;便签按瀑布流排布,数据仅存本机浏览器。',
+    icon: 'Memo',
+    accent: '#f59e0b',
+    category: '生活实用',
+    comp: () => import('@/views/apps/StickyNotes.vue') as unknown as Promise<Component>,
   },
 ]
 

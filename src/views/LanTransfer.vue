@@ -362,11 +362,13 @@ function bindChannel(ch: RTCDataChannel) {
   ch.onclose = () => {
     if (!connected.value) return
     connected.value = false
-    statusText.value = '对方已断开连接'
-    ElMessage.warning('对方已断开连接')
     stopSpeedTimer()
     sending = false
     ackResolvers.clear()
+    // 手动模式下回到初始选择界面,避免旧配对码干扰下一轮
+    if (mode.value === 'manual') resetManual()
+    statusText.value = '对方已断开连接'
+    ElMessage.warning('对方已断开连接')
   }
   ch.onmessage = (e) => handleData(e.data)
 }
@@ -701,18 +703,20 @@ async function waitIceGather(p: RTCPeerConnection): Promise<void> {
 const connectingUI = ref(false)
 
 async function startManualReceiver() {
-  if (!manualPeerCode.value.trim()) {
+  const pasted = manualPeerCode.value.trim()
+  if (!pasted) {
     ElMessage.warning('请先把对方的邀请码粘贴到输入框')
     return
   }
   if (manualMyCode.value) return // 已生成应答码,等连接即可
   resetManual()
+  manualPeerCode.value = pasted // 重置会清空输入框,回填保留
   manualIsSender.value = false
   peerName.value = '对方'
   connectingUI.value = true
   statusText.value = '正在解析邀请码…'
   try {
-    const offer = await unpackCode(manualPeerCode.value)
+    const offer = await unpackCode(pasted)
     if (offer.type !== 'offer') throw new Error('这不是邀请码(应为 offer 类型)')
     prepareManualPeer(false)
     const p = pc.value!

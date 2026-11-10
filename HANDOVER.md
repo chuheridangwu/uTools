@@ -2,6 +2,15 @@
 
 项目最后状态(交接时点):`npm run type-check` 0 错误,`npm run build` 通过,dev server(http://localhost:5199)可正常起服并返回首页 200。远程仓库已配置:https://github.com/chuheridangwu/uTools.git(分支 `main`)。
 
+## 当前状态(2026-11-10,接手时以本节为准)
+
+> 第 1~6 节记录的是工具站早期(2026-10-29 前后)状态;项目此后新增了「桌面模式 / 应用商店」,以下为最新事实。
+
+- **双形态**:`src/config/tools.ts` 是有路由的「工具」注册表;`src/config/desktopApps.ts` 是无路由、以浮层窗口打开的「桌面应用」注册表(分类固定为 效率工具 / 开发工具 / 设计资源 / 生活实用)。桌面状态在 `src/stores/desktop.ts`(localStorage 前缀 `utools_desktop-`),窗口组件 `src/components/desktop/AppWindow.vue`,应用视图统一放 `src/views/apps/*.vue`,由注册表里的 `comp` 动态 import。
+- **当前应用数:58**。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
+- **第 0 节硬性约定仍然有效**。push 报 `HTTP2 framing layer` 或 443 超时时,直接用 `git -c http.proxy=http://127.0.0.1:7897 push origin main`(本机 Clash 系代理),不要写死进 git config。
+- **必须跑 `npm run build`,不能只跑 type-check**:`vue-tsc --noEmit` 不做模板 codegen,模板编译错误只会在 `vite build` 阶段暴露(详见第 7 节的踩坑)。
+
 ## 0. 接手后每次必做事项(硬性约定)
 
 - **每次修改完成后,必须自动执行三步,不要等用户提醒:**
@@ -106,3 +115,24 @@
 **用户决策(尚未做):**
 - 用户决定**不**部署任何自动提交的永久机制,改为「AI 每次修改后手动 commit+push」,约定见第 0 节。
 - 「手机在线收听有声书」需求**已放弃**(2026-10-29,当晚讨论过 R2 上传 / 转码压缩 / Audiobookshelf 自托管等方案,均未实施,本地媒体工具保持纯前端内存播放,不再讨论)。
+
+## 7. 会话记录(2026-11-10)
+
+**已做:**
+- 接手时工作区有 5 个「已写完但未提交」的应用(九宫格切图、文本加密、AA 分账、生物钟、图片转 Base64)及注册表改动。type-check 通过但 build 失败,修复两处模板问题后构建通过,提交 `e947574` 并推送。
+- 按既有节奏继续新增第二批 5 个应用,提交 `2783321` 并推送:
+  - `Metronome.vue` 节拍器:Web Audio lookahead 调度器(提前 120ms 排音)、拍号 / 八分~十六分细分 / 小节重音 / 音色 / 音量 / Tap Tempo,卸载时关闭 AudioContext。
+  - `UrlParser.vue` URL 参数解析:拆解 query(自动解码、保留同名多值)、复制查询串或 JSON、一键载入构建器;构建模式可编辑键值对并切换空格编码为 `+` 或 `%20`。
+  - `JwtDecoder.vue` JWT 解析:Base64URL 解码 Header/Payload、iat/nbf/exp 时间换算与过期状态、示例 Token;明确标注「只解码不校验签名」。
+  - `TextLineTools.vue` 文本行处理:修剪 / 去空行 / 过滤 / 去重 / 大小写 / 自然排序 / 反转 / 编号 / 前后缀的固定顺序流水线,实时预览、导出 txt。
+  - `SvgPattern.vue` SVG 图案生成器:圆点 / 网格 / 斜线 / 棋盘 / 波浪五种 `<pattern>` 平铺,配色与尺寸可调,复制 SVG / CSS 背景或下载 .svg。
+- 五个应用均为纯前端、无新增依赖,构建后各自产出独立 lazy chunk。
+
+**踩坑(重要,务必记住):**
+- **Vue 模板里 `v-if` 和 `<template v-else>` 之间不能夹其他元素**。若在两者之间插入 `<input type="file" hidden>` 之类的元素,`@vue/compiler-core` codegen 阶段会崩 `Cannot read properties of undefined (reading 'type')` / `Codegen node is missing for element/if/for node`;而 `vue-tsc --noEmit` 仍是 0 错误,只有 `vite build` 会失败。修法:把中间元素移到 `v-if` 之前,让 `v-else` 紧邻 `v-if`(中间只留 HTML 注释是安全的)。本次已修 `ImageToBase64.vue` 与 `NineGridCut.vue`。
+- 快速定位同类问题:用 `node -e` 调 `@vue/compiler-sfc` 的 `compileTemplate()` 批量扫 `src/views/apps/*.vue`,几秒即可找出所有编译崩溃的文件。
+
+**待办 / 注意:**
+- `README.md` 仍是早期版本(只写 27 个工具、未提桌面模式与应用商店),需要对外说明时再更新。
+- 构建仍有 vendor(2.2MB)/ vendor-markdown(1.0MB)/ vendor-ui(943KB)/ heic2any(1.35MB)超 1MB 的提示,属既有情况,非本次引入。
+- 桌面模式图标名来自 `@element-plus/icons-vue`,注册表里写字符串名;新增应用前确认图标名在包内存在(如 `headphones` 不存在,应为 `Headset`)。

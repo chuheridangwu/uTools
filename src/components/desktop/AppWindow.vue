@@ -3,12 +3,12 @@
  * 桌面模式的应用窗口:毛玻璃全屏浮层,顶部标题栏 + 关闭按钮,
  * 内容按 appKey 懒加载:
  *  - kind=tool → 站内工具视图(import.meta.glob 与 router 同源)
- *  - kind=app  → DESKTOP_APPS 注册的组件
+ *  - kind=app  → 统一应用目录(CATALOG_MAP)注册的组件
  */
 import { computed, defineAsyncComponent, ref, watch, type Component } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { useDesktopStore } from '@/stores/desktop'
-import { APP_MAP } from '@/config/desktopApps'
+import { CATALOG_MAP } from '@/config/appCatalog'
 import { TOOL_MAP } from '@/config/tools'
 
 const props = defineProps<{ visible: boolean; appKey: string }>()
@@ -17,8 +17,8 @@ const emit = defineEmits<{ close: [] }>()
 const desktop = useDesktopStore()
 const item = computed(() => desktop.items.find((i) => i.key === props.appKey))
 
-const kind = computed(() => item.value?.kind ?? (APP_MAP.has(props.appKey) ? 'app' : 'tool'))
-const title = computed(() => item.value?.name ?? TOOL_MAP.get(props.appKey)?.name ?? APP_MAP.get(props.appKey)?.name ?? '')
+const kind = computed(() => item.value?.kind ?? (CATALOG_MAP.get(props.appKey)?.kind ?? 'tool'))
+const title = computed(() => item.value?.name ?? TOOL_MAP.get(props.appKey)?.name ?? CATALOG_MAP.get(props.appKey)?.name ?? '')
 
 const viewModules = import.meta.glob('../../views/*.vue')
 
@@ -29,7 +29,7 @@ const resolved = computed<Component | null>(() => {
   const ck = kind.value + ':' + props.appKey
   if (!cache.has(ck)) {
     if (kind.value === 'app') {
-      const meta = APP_MAP.get(props.appKey)
+      const meta = CATALOG_MAP.get(props.appKey)
       if (!meta) return null
       cache.set(ck, defineAsyncComponent(meta.comp as () => Promise<Component>))
     } else {

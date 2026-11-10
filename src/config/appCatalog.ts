@@ -72,6 +72,11 @@ const APP_CATEGORY_MAP: Record<string, string> = {
   开发工具: 'dev',
   设计资源: 'design',
   生活实用: 'life',
+  // uTools 自有分类:找Tab 没有,按我们自己的方式保留
+  文本工具: 'text',
+  图片工具: 'image',
+  数据文件: 'data',
+  局域网: 'lan',
 }
 
 /* ------------------------------------------------------------------ *
@@ -131,6 +136,7 @@ const RELEASE_BATCHES: string[][] = [
   ['roman-numerals', 'date-calculator', 'loan-calculator', 'random-tool', 'habit-tracker'],
   ['nine-grid-cut', 'text-cipher', 'split-bill', 'biorhythm', 'image-to-base64'],
   ['metronome', 'url-parser', 'jwt-decoder', 'text-line-tools', 'svg-pattern'],
+  ['byte-converter', 'ascii-table', 'http-status', 'curl-formatter', 'json-csv'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()

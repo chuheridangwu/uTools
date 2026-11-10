@@ -13,7 +13,7 @@ export interface DesktopAppMeta {
   desc: string
   icon: string        // Element Plus 图标名
   accent: string
-  category: '效率工具' | '开发工具' | '设计资源' | '生活实用'
+  category: '效率工具' | '开发工具' | '设计资源' | '生活实用' | '文本工具' | '图片工具' | '数据文件' | '局域网'
   comp: () => Promise<Component>
 }
 
@@ -597,6 +597,56 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     accent: '#ec4899',
     category: '设计资源',
     comp: () => import('@/views/apps/SvgPattern.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'byte-converter',
+    name: '字节换算',
+    short: 'bit / B / KB~PB 互转',
+    desc: '在 bit、字节与 KB~PB 之间任意换算,可切换 1024 二进制或 1000 十进制进位,支持每行一个数值的批量换算与结果导出。',
+    icon: 'Coin',
+    accent: '#0ea5e9',
+    category: '效率工具',
+    comp: () => import('@/views/apps/ByteConverter.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'ascii-table',
+    name: 'ASCII 码表',
+    short: '0~255 全表与进制对照',
+    desc: '完整的 0~255 ASCII / Latin-1 码表,同时给出十进制、十六进制、八进制、二进制、HTML 实体与控制字符说明,支持搜索、分组与导出 TSV。',
+    icon: 'Grid',
+    accent: '#14b8a6',
+    category: '开发工具',
+    comp: () => import('@/views/apps/AsciiTable.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'http-status',
+    name: 'HTTP 状态码查询',
+    short: '1xx~5xx 含义与排查',
+    desc: '常用 HTTP 状态码速查,按类别筛选与关键词搜索,给出中文释义、易混淆状态码区别(401/403、302/307)与排查建议,可导出 TSV。',
+    icon: 'InfoFilled',
+    accent: '#f59e0b',
+    category: '开发工具',
+    comp: () => import('@/views/apps/HttpStatus.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'curl-formatter',
+    name: 'CURL 格式化',
+    short: 'curl 拆参并生成 fetch',
+    desc: '粘贴 curl 命令即可拆出 URL、方法、请求头、请求体与 Cookie,生成多行美化版 curl 和等价的 fetch() 代码;支持续行符与引号转义。',
+    icon: 'Connection',
+    accent: '#8b5cf6',
+    category: '开发工具',
+    comp: () => import('@/views/apps/CurlFormatter.vue') as unknown as Promise<Component>,
+  },
+  {
+    key: 'json-csv',
+    name: 'JSON / CSV 转换',
+    short: '双向转换含嵌套字段',
+    desc: '对象数组与 CSV 双向转换:嵌套字段按点号展开、数组序列化、引号内逗号与换行均可正确处理;支持自定义分隔符、表头开关与 JSON Lines 输出。',
+    icon: 'Files',
+    accent: '#22c55e',
+    category: '数据文件',
+    comp: () => import('@/views/apps/JsonCsv.vue') as unknown as Promise<Component>,
   },
 ]
 

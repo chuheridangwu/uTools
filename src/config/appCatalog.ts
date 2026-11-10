@@ -138,6 +138,7 @@ const RELEASE_BATCHES: string[][] = [
   ['metronome', 'url-parser', 'jwt-decoder', 'text-line-tools', 'svg-pattern'],
   ['byte-converter', 'ascii-table', 'http-status', 'curl-formatter', 'json-csv'],
   ['image-compress', 'image-crop', 'random-avatar', 'seal-generator', 'code-screenshot'],
+  ['browser-env-detect', 'websocket-test', 'html-editor', 'quadrant-notes', 'no-sleep'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()

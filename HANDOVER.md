@@ -7,8 +7,8 @@
 > 第 1~6 节记录的是工具站早期(2026-10-29 前后)状态;项目此后新增了「桌面模式 / 应用商店」,以下为最新事实。
 
 - **双形态**:`src/config/tools.ts` 是有路由的「工具」注册表;`src/config/desktopApps.ts` 是无路由、以浮层窗口打开的「桌面应用」注册表(分类固定为 效率工具 / 开发工具 / 设计资源 / 生活实用)。桌面状态在 `src/stores/desktop.ts`(localStorage 前缀 `utools_desktop-`),窗口组件 `src/components/desktop/AppWindow.vue`,应用视图统一放 `src/views/apps/*.vue`,由注册表里的 `comp` 动态 import。
-- **当前应用数:统一目录 `CATALOG` 85 个(56 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
-- **2026-11-10 起主线任务改为「完整模仿找Tab(https://www.zhaotab.com/)」**,不再只是按批加应用;详见第 8 节。
+- **当前应用数:统一目录 `CATALOG` 90 个(61 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
+- **2026-11-10 起主线任务改为「完整模仿找Tab(https://www.zhaotab.com/)」**,不再只是按批加应用;详见第 8 节。**接手时优先看第 9 节「任务看板」**,那里是最新且唯一的进度事实来源。
 - **第 0 节硬性约定仍然有效**。push 报 `HTTP2 framing layer` 或 443 超时时,直接用 `git -c http.proxy=http://127.0.0.1:7897 push origin main`(本机 Clash 系代理),不要写死进 git config。
 - **必须跑 `npm run build`,不能只跑 type-check**:`vue-tsc --noEmit` 不做模板 codegen,模板编译错误只会在 `vite build` 阶段暴露(详见第 7 节的踩坑)。
 
@@ -154,10 +154,90 @@
 - 面板与 URL 同步:`?p=store` / `?p=settings` / `?p=add-app`,书签小工具 `?add=<网址>&name=<标题>`;用 vue-router `query`(不新增路由记录,避免和工具路由冲突),浏览器前进/后退可切换,Esc 返回桌面。
 - `AppIcon.vue` 统一渲染圆角图标:外链图标 → emoji → Element Plus 图标 → 名称首字;外链加载失败会回退,不会留空白图标。
 
-**已完成批次:** P0 `e5648b3`(目录 + 状态 v2)、P1 `8c03f48`(桌面主题/默认首页)、P2–P4(商店/添加 App/设置整页 + 深链接 + 右键菜单配色修复)。
+**已完成批次:** P0 `e5648b3`(目录 + 状态 v2)、P1 `8c03f48`(桌面主题/默认首页)、P2–P4 `d95f732`(商店/添加 App/设置整页 + 深链接 + 右键菜单配色修复)。
 **验证方式:** `npm run build` 通过;headless Chrome 截图四个页面;CDP 交互检查 9/9 通过(点击开商店、URL 同步、添加应用落盘、返回按钮、Dock 开设置、隐藏应用分组、Esc 返回)。
 
-**P5 待办(补齐找Tab 的非游戏应用,逐批提交推送):**
-- 从 `/tmp/zhaotab-home.html` 的 `<noscript>` 应用清单可提取找Tab 全量 126 个应用名;对照本目录后,尚未覆盖且非游戏/非阅读的候选:字节换算、ASCII 码表、浏览器环境检测、HTTP 状态码查询、CURL 格式化、WebSocket 在线测试、HTML 编辑器、JSON/CSV 转换、端口检测、图片压缩、图片裁切、图片去背景、PDF 裁剪、在线解压文件、随机头像生成、随机图片、字帖生成器、印章生成器、代码美化截图、四象限笔记、手速测试、防休眠、IMEI 校验生成、Whois 查询、SVG 编辑器 等。
-- 优先做纯本地、无需重型库或第三方服务的;需要 ML/外链 API 的(图片去背景、Whois)可降级为「打开外部网站」或跳过,并在交付说明里注明。
-- 每批 5 个:改注册表 + 写视图 → `npm run type-check` + `npm run build` → commit → push。注意第 7 节的 `v-if`/`v-else` 模板踩坑。
+> 本节为当日会话的过程记录。**后续进度、剩余任务与踩坑清单一律以第 9 节「任务看板」为准**,不要在这里追加待办。
+
+## 9. 任务看板(2026-11-10 14:30 更新 · 接手时先看这一节)
+
+### 9.1 要完成的任务(总目标与验收口径)
+
+用户原话的意图:**完整模仿 `https://www.zhaotab.com/`**,不只是换主题,而是包含
+(1) 找Tab 式主题(壁纸桌面、圆角图标、顶部系统栏、中央搜索、底部 Dock、毛玻璃);
+(2) 应用商店里的各种应用;
+(3) 「把商店应用添加到桌面」的能力;
+(4) 设置里的各项功能;
+(5) 内页功能与样式也尽量照着做。游戏除外。
+
+**用户明确的范围约定(不要擅自改动):**
+- **不做**:`电台随身听`、`游戏中心`、`3D魔方`、`公众号排版`;商店分类 `游戏`、`阅读` 也不做。
+- 找Tab 没有、uTools 已有的功能/分类**一律保留**(`文本工具`/`图片工具`/`数据文件`/`局域网` 等),只是样式向找Tab 靠拢。
+- 若某功能只有 uTools 有、找Tab 没有,按 uTools 自己的方式实现。
+- 两条已确认的工作假设:**桌面模式设为默认首页**;**账户/云同步以「仅本地 + 导出/导入 JSON」等价实现,不接后端**。
+
+**验收口径:** `npm run type-check` 0 错误 + `npm run build` 通过 + 每个功能在浏览器里可操作 + 每次改动 commit/push(第 0 节硬性约定)。
+
+### 9.2 已完成(全部已 push 到 `origin/main`)
+
+| 阶段 | commit | 内容 |
+| --- | --- | --- |
+| 前置 | `e947574` / `2783321` | 两批共 10 个桌面应用(主线转向前按旧节奏做的,保留) |
+| 前置 | `05c58fc` | 交接文档补桌面模式现状与模板踩坑 |
+| P0 | `e5648b3` | `appCatalog.ts` 统一目录(85 条)、`wallpapers.ts` 壁纸预设、`desktop.ts` 状态 v2(版本迁移/隐藏/自定义站点/备份) |
+| P1 | `8c03f48` | 桌面模式设为默认首页;壁纸桌面 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单 + 双击隐藏;`AppIcon.vue` |
+| P2–P4 | `d95f732` | 商店 / 添加 App / 设置三个**整页**(删除旧 drawer)、`desktop-pages.css`、URL 深链接、书签小工具、右键菜单配色修复、图标加载失败回退 |
+| P5-1 | `d785ccc` | 5 个非游戏应用:字节换算、ASCII 码表、HTTP 状态码查询、CURL 格式化、JSON / CSV 转换 |
+
+**当前精确状态(已实测):**
+- `CATALOG` = **90** 条(61 桌面应用 + 29 工具),默认桌面 34 个,商店分类计数 `{全部:90, 效率工具:18, 开发工具:23, 设计资源:8, 生活实用:23, 文本工具:3, 图片工具:10, 数据文件:4, 局域网:1}`;排除项泄漏 0。
+- `npm run build` 通过(EXIT=0),仅有既有的 >1MB chunk 警告。
+- 四个页面(桌面 / `?p=store` / `?p=settings` / `?p=add-app`)headless Chrome 截图渲染正常。
+- CDP 交互检查 **9/9 通过**:点击开商店、`?p=store` 同步、商店「添加」落盘(35→36)、返回按钮关页并清 query、Dock 开设置、隐藏应用分组渲染、Esc 返回桌面。
+- 本地预览服务 `npx vite preview --port 5188 --host 127.0.0.1`(dev 端口仍是 5199)。
+
+### 9.3 未完成(按优先级)
+
+**A. P5 剩余批次 —— 补齐找Tab 的非游戏应用,每批 5 个,逐批 build + commit + push**
+
+| 批次 | 应用 | 状态 |
+| --- | --- | --- |
+| P5-2 | 图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 | 未开始 |
+| P5-3 | 浏览器环境检测、WebSocket 在线测试、HTML 编辑器、四象限笔记、防休眠 | 未开始 |
+| P5-4 | IMEI 校验生成、手速测试、字帖生成器、算术题生成器、端口速查 / 检测 | 未开始 |
+
+> 找Tab 全量 126 个应用名可从 `zhaotab-home.html` 的 `<noscript>` 链接清单提取(原临时文件在 `/tmp`,已把候选名单固化在本文档,不必依赖 `/tmp`)。以上候选均已排除游戏与阅读。
+
+**B. 需要用户拍板才能做的(不建议自作主张)**
+- 依赖重型库 / 第三方服务 / ML 的:图片去背景、Whois 查询、PDF 裁剪、在线解压文件、随机图片(外链图源)、完整 SVG 编辑器(已有「SVG 图案生成器」近似覆盖)。可降级为「外部网站快捷方式」或跳过,**做之前先问用户**。
+- 找Tab 有、我们暂时没做的细节:搜索结果分组(站内 / 站外 / 最近使用 / 最匹配 / 已隐藏)、「最近打开」记录、列表 / 网格视图切换、真正的浏览器插件(目前只做了书签小工具)。
+- 登录 / 云端同步:按 9.1 的约定不做后端,目前以「仅本地 + JSON 备份」等价实现;若用户改口需要真同步,再单独立项。
+
+**C. 工程债(非主线,可延后)**
+- `README.md` 仍是早期版本(只写 27 个工具,未提桌面模式 / 应用商店 / 90 个应用),对外说明前必须更新。
+- 构建大 chunk 警告:vendor(2.55MB)/ vendor-markdown(1.02MB)/ vendor-ui(943KB)/ heic2any(1.35MB),属既有情况。
+- `LanTransfer.vue` 的真实 WebRTC 连通性仍需在真 Chrome + 手机上验证(内置 Review 浏览器无 WebRTC 能力,自动化测不了,见第 6 节)。
+
+### 9.4 踩过的坑(按「下次最容易再踩」排序,务必先看)
+
+1. **必须跑 `npm run build`,不能只跑 type-check**。`vue-tsc --noEmit` 不做 Vue 模板 codegen,模板编译崩溃只在 `vite build` 暴露。批量定位:`node -e` 调 `@vue/compiler-sfc` 的 `compileTemplate()` 扫 `src/views/apps/*.vue`。
+2. **`v-if` 与 `<template v-else>` 之间不能夹任何元素**(连 `<input hidden>` 也不行),否则 codegen 报 `Cannot read properties of undefined (reading 'type')` / `Codegen node is missing`。修法:把中间元素移到 `v-if` 之前;中间只留 HTML 注释是安全的。已修 `ImageToBase64.vue`、`NineGridCut.vue`。
+3. **新增应用必须同时改两处 + 追加发布批次**:① `desktopApps.ts` 注册表;② `appCatalog.ts` 的 `RELEASE_BATCHES` 追加一批(key 数组),否则 `isNew`/`releasedAt` 为 0,「最新上架」里看不到新应用。`CATALOG` 由注册表派生,**不要另建目录**。
+4. **`desktopApps.ts` 的 `category` 是字面量联合类型**。用 `数据文件`/`图片工具`/`文本工具`/`局域网` 等 uTools 自有分类时,要同时扩展该联合类型**和** `appCatalog.ts` 的 `APP_CATEGORY_MAP`,否则类型检查失败 / 分类落到默认 `效率工具`。
+5. **`teleport to="body"` 的元素拿不到 `.desktop` 上的 CSS 变量**。右键菜单 `.ctx` 原来用 `var(--fg)` / `var(--glass-bg)` / `var(--shadow)`,实际全 undefined 导致文字不可读;必须在 `.ctx` 自己身上定义并在 `html.dark` 下覆盖。
+6. **面板深链接只能用 vue-router 的 `query`,不能新增路由记录**:`App.vue` 在桌面模式下根本不渲染 `<router-view>`,且路由是 `createWebHistory`,`/store` 这类路径会「No match found」。用 `?p=store` + `computed` 的 get/set 调 `router.replace({query})`。**不要用 `window.history.replaceState` 直接改 URL**,会让 vue-router 内部状态与地址栏脱钩(书签小工具原来就踩了这个)。
+7. **headless Chrome 截图会挂死**:给 `--user-data-dir=<新目录>` + `--no-proxy-server` 组合会让进程卡住 18 分钟以上。可复用的可靠写法是不带这两个参数、`http://localhost:<port>/`、`--virtual-time-budget=6000`,并用 Python `subprocess.run(..., timeout=75)` 兜底。**macOS 没有 `timeout` 命令**,别写 `timeout 90 chrome ...`。
+8. **运行时校验目录时 esbuild 会因 `.vue` 动态 import 报 `No loader is configured for ".vue" files`**。解法:加一个 esbuild 插件把 `.vue` 解析到 stub 命名空间返回 `export default {}`;或干脆用正则从两个注册表源文件里抽 `name:` 做粗校验。Pinia store 的运行时测试则要把 `pinia`/`vue`/`vue-demi` 标 `external`,否则两实例冲突报 `getActivePinia()`。
+9. **`AppIcon.vue` 外链 favicon 会失效**:只把 `<img>` 隐藏会留空白图标。现在用 `imgFailed` + `watch(iconUrl)` 回退到 emoji → Element Plus 图标 → 名称首字。`AddAppPage.vue` 还会用 `new Image()` 预检 URL,加载不成功就不写入配置。
+10. **CURL 格式化的两个序列化坑**:生成多行 curl 时 JSON body 必须压成单行,否则单引号内换行会破坏命令;生成 `fetch()` 时 JSON body 用 `JSON.stringify(对象字面量)`,普通文本 body 直接用字符串字面量,不能二次 `JSON.stringify` 加引号。
+11. **`el-select allow-create` 的自定义值要能被归一化**:字节换算里用户可能输入 `MB` / `MiB` / `M`,`normUnit()` 必须先剥 `iB` 再匹配 `[KMGTP]`,否则显示对了但换算结果是 NaN。
+12. **图标名要验**:`@element-plus/icons-vue` 里写字符串名,新增应用前用 `node -e "...'Headset' in require('@element-plus/icons-vue')"` 确认(`headphones` 不存在,应为 `Headset`)。
+13. **Git 推 GitHub 连不上**(443 超时 / `HTTP2 framing layer`):`git -c http.proxy=http://127.0.0.1:7897 push origin main`,不要写死进 git config。
+14. **每次改完立即 commit + push**(第 0 节),不要等用户提醒;提交信息用中文一句话 `feat: …` / `fix: …` / `docs: …`。
+
+### 9.5 接手后的推荐动作
+
+1. `npm run type-check` && `npm run build`,确认基线干净;`git status -sb` 应为空、`HEAD` = `origin/main`。
+2. 从 9.3 的 P5-2 开始,每批 5 个:写 `src/views/apps/*.vue` → 改两个注册表 → `npm run build` → commit → push。
+3. 每批结束把 9.2 的表格、CATALOG 数量和 9.3 的勾选状态同步更新到本文档,并一起提交。
+4. 遇到 B 类「需要拍板」的项,先问用户再动手。

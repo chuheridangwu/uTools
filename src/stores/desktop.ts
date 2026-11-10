@@ -100,7 +100,8 @@ function defaultPrefs(): DesktopPrefs {
 function defaults(): DesktopState {
   return {
     version: DESKTOP_STATE_VERSION,
-    mode: 'classic',
+    // 找Tab 式桌面为默认首页;经典列表模式仍可在「设置 → 首页形态」切回
+    mode: 'desktop',
     desktopIds: [...DEFAULT_DESKTOP_IDS],
     hiddenIds: [],
     dockIds: [...DEFAULT_DOCK_IDS],

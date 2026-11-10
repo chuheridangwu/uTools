@@ -6,19 +6,17 @@
 import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDesktopStore, WALLPAPERS, type WallpaperPreset } from '@/stores/desktop'
+import { WALLPAPER_GROUPS } from '@/config/wallpapers'
 import { useAppStore } from '@/stores/app'
 
 const visible = defineModel<boolean>({ required: true })
 const desktop = useDesktopStore()
 const appStore = useAppStore()
 
-const presetList: { key: WallpaperPreset; label: string }[] = [
-  { key: 'aurora', label: '极光' },
-  { key: 'dawn', label: '晨曦' },
-  { key: 'mist', label: '薄雾' },
-  { key: 'forest', label: '松林' },
-  { key: 'violet', label: '紫夜' },
-]
+/** 渐变色 + 风景图片两组预设铺平展示 */
+const presetList: { key: WallpaperPreset; label: string }[] = WALLPAPER_GROUPS.flatMap((g) =>
+  g.items.map((i) => ({ key: i.id as WallpaperPreset, label: i.name })),
+)
 
 const fileInput = ref<HTMLInputElement>()
 

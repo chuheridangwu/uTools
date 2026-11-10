@@ -1,35 +1,35 @@
 <script setup lang="ts">
 /**
- * 桌面模式首页(模仿找Tab):
- * 壁纸背景 + 中央搜索 + 可拖拽 App 图标网格 + 底部 Dock + 应用商店/设置抽屉
- * 工具与应用以 AppWindow 浮层打开,不走路由跳转。
+ * 桌面模式首页(P1:仿找Tab 主题)
+ * 壁纸铺满 + 顶部系统栏 + 中央搜索(支持拼音) + 圆角应用图标网格
+ * + 底部 Dock(固定的系统图标 + 用户固定的应用) + 右键菜单 / 双击桌面隐藏。
+ * 工具与应用统一以 AppWindow 浮层打开,不走路由跳转。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import * as ElIcons from '@element-plus/icons-vue'
 import {
   CirclePlus,
-  Link,
+  HomeFilled,
   Moon,
-  Plus,
   Search,
   Setting,
+  Shop,
   Sunny,
 } from '@element-plus/icons-vue'
 import { useDesktopStore, type DesktopItem } from '@/stores/desktop'
 import { useAppStore } from '@/stores/app'
-import { APP_MAP, type DesktopAppMeta } from '@/config/desktopApps'
-import { TOOL_MAP, TOOLS } from '@/config/tools'
-import CommandPalette from '@/components/CommandPalette.vue'
-import AppWindow from '@/components/desktop/AppWindow.vue'
-import StoreDrawer from '@/components/desktop/StoreDrawer.vue'
-import SettingsDrawer from '@/components/desktop/SettingsDrawer.vue'
-
-/** 图标名 → 组件(找不到回退 Grid) */
-function iconOf(name: string): Component {
-  return (ElIcons as unknown as Record<string, Component>)[name] ?? ElIcons.Grid
-}
+import {
+  CATALOG,
+  CATALOG_MAP,
+  normalizeSearch,
+  searchCatalog,
+} from '@/config/appCatalog'
+import { LIGHT_WALLPAPERS } from '@/config/wallpapers'
+import AppIcon from './AppIcon.vue'
+import AppWindow from './AppWindow.vue'
+import StoreDrawer from './StoreDrawer.vue'
+import SettingsDrawer from './SettingsDrawer.vue'
 
 defineOptions({ name: 'DesktopHome' })
 
@@ -38,51 +38,70 @@ const appStore = useAppStore()
 const route = useRoute()
 const router = useRouter()
 
+/* ------------------------------ 外观 ------------------------------ */
+const isLightBg = computed(() => LIGHT_WALLPAPERS.has(desktop.wallpaper.preset))
+const iconPx = computed(() => desktop.iconPx)
+const iconBoxStyle = computed(() => ({ width: `${iconPx.value}px`, height: `${iconPx.value}px` }))
+
 /* ------------------------------ 搜索 ------------------------------ */
+const searchRef = ref<HTMLInputElement>()
 const searchKw = ref('')
-const paletteVisible = ref(false)
-const searchHits = computed(() => {
-  const kw = searchKw.value.trim().toLowerCase()
-  if (!kw) return []
-  return desktop.items
-    .filter((i) => i.name.toLowerCase().includes(kw) || (TOOL_MAP.get(i.key)?.keywords ?? []).some((k) => k.toLowerCase().includes(kw)))
-    .slice(0, 6)
+
+interface Hit extends DesktopItem { fromCatalog: boolean }
+
+/** 桌面上的应用优先,其次补上商店里尚未添加的应用(可直接添加并打开) */
+const searchHits = computed<Hit[]>(() => {
+  const q = normalizeSearch(searchKw.value)
+  if (!q) return []
+  const mine: Hit[] = desktop.items
+    .filter((i) => normalizeSearch(`${i.name}${i.short ?? ''}${i.category ?? ''}`).includes(q))
+    .slice(0, 5)
+    .map((i) => ({ ...i, fromCatalog: false }))
+  const rest: Hit[] = searchCatalog(searchKw.value, CATALOG)
+    .filter((e) => !desktop.isOnDesktop(e.key))
+    .slice(0, 4)
+    .map((e) => ({
+      key: e.key, name: e.name, icon: e.icon, accent: e.accent, kind: e.kind,
+      short: e.short, desc: e.desc, category: e.categoryLabel,
+      isNew: e.isNew, isHot: e.isHot, needsLogin: e.needsLogin,
+      fromCatalog: true,
+    }))
+  return [...mine, ...rest].slice(0, 9)
 })
 
-function openItem(item: DesktopItem) {
-  openKey(item.key)
+function hitKind(h: Hit): string {
+  return h.fromCatalog ? '商店 · 添加并打开' : h.kind === 'tool' ? '工具' : h.kind === 'app' ? '应用' : '网站'
 }
 
-function openKey(key: string) {
-  const item = desktop.items.find((i) => i.key === key)
-  if (!item) return
-  if (item.kind === 'site') {
-    window.open(item.url, '_blank')
-    return
-  }
-  windowState.key = key
-  windowState.visible = true
+function onHit(h: Hit) {
+  openKey(h.key)
+  searchKw.value = ''
 }
 
 function onSearchEnter() {
-  if (searchHits.value.length) {
-    openItem(searchHits.value[0])
-    searchKw.value = ''
+  if (searchHits.value.length) onHit(searchHits.value[0])
+}
+
+/* ------------------------------ 打开应用 ------------------------------ */
+const windowState = reactive({ visible: false, key: '' })
+
+function openKey(key: string) {
+  const item = desktop.items.find((i) => i.key === key)
+  if (item?.kind === 'site') {
+    if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer')
+    return
   }
+  if (!CATALOG_MAP.has(key)) return
+  if (!desktop.isOnDesktop(key)) desktop.add(key)
+  windowState.key = key
+  windowState.visible = true
 }
 
 /* ------------------------------ 图标拖拽 ------------------------------ */
 const dragFrom = ref(-1)
 const dragOver = ref(-1)
-
-function onDragStart(index: number) {
-  dragFrom.value = index
-}
-
-function onDragEnter(index: number) {
-  dragOver.value = index
-}
-
+function onDragStart(index: number) { dragFrom.value = index }
+function onDragEnter(index: number) { dragOver.value = index }
 function onDrop() {
   if (dragFrom.value >= 0 && dragOver.value >= 0) desktop.move(dragFrom.value, dragOver.value)
   dragFrom.value = -1
@@ -91,19 +110,15 @@ function onDrop() {
 
 /* ------------------------------ 右键菜单 ------------------------------ */
 const menu = reactive({ visible: false, x: 0, y: 0, item: null as DesktopItem | null })
-
 function onContext(e: MouseEvent, item: DesktopItem) {
   e.preventDefault()
   menu.visible = true
-  menu.x = Math.min(e.clientX, window.innerWidth - 170)
-  menu.y = Math.min(e.clientY, window.innerHeight - 150)
+  menu.x = Math.min(e.clientX, window.innerWidth - 180)
+  menu.y = Math.min(e.clientY, window.innerHeight - 220)
   menu.item = item
 }
-
-function closeMenu() {
-  menu.visible = false
-}
-
+function closeMenu() { menu.visible = false }
+function menuOpen() { if (menu.item) openKey(menu.item.key); closeMenu() }
 function menuPin() {
   if (menu.item) {
     desktop.toggleDock(menu.item.key)
@@ -111,63 +126,104 @@ function menuPin() {
   }
   closeMenu()
 }
-
-function menuRemove() {
+function menuHide() {
   if (menu.item) {
-    desktop.remove(menu.item.key)
-    ElMessage.success('已从桌面移除,可在应用商店重新添加')
+    desktop.hide(menu.item.key)
+    ElMessage.success(menu.item.kind === 'site' ? '已删除网站快捷方式' : '已隐藏,可在「设置 → 隐藏的应用」恢复')
   }
   closeMenu()
 }
+function menuEdit() { if (menu.item) openSiteDialog(menu.item); closeMenu() }
 
-function menuOpen() {
-  if (menu.item) openItem(menu.item)
-  closeMenu()
-}
-
-/* ------------------------------ 添加网站 ------------------------------ */
-const siteDialog = reactive({ visible: false, name: '', url: '' })
-
-function openSiteDialog() {
+/* ------------------------------ 添加 / 编辑网站 ------------------------------ */
+const siteDialog = reactive({ visible: false, editKey: '', name: '', url: '', iconUrl: '', emoji: '' })
+function openSiteDialog(item?: DesktopItem) {
   siteDialog.visible = true
-  siteDialog.name = ''
-  siteDialog.url = ''
+  siteDialog.editKey = item?.kind === 'site' ? item.key : ''
+  siteDialog.name = item?.name ?? ''
+  siteDialog.url = item?.url ?? ''
+  siteDialog.iconUrl = item?.iconUrl ?? ''
+  siteDialog.emoji = item?.emoji ?? ''
 }
-
 function confirmSite() {
   if (!siteDialog.name.trim() || !siteDialog.url.trim()) {
     ElMessage.warning('名称和网址都要填')
     return
   }
-  desktop.addSite(siteDialog.name.trim(), siteDialog.url.trim())
+  const extra = { iconUrl: siteDialog.iconUrl.trim(), emoji: siteDialog.emoji.trim(), accent: '#667eea' }
+  if (siteDialog.editKey) {
+    desktop.editSite(siteDialog.editKey, { name: siteDialog.name.trim(), url: siteDialog.url.trim(), ...extra })
+    ElMessage.success('已保存修改')
+  } else {
+    desktop.addSite(siteDialog.name.trim(), siteDialog.url.trim(), extra)
+    ElMessage.success('已添加到桌面')
+  }
   siteDialog.visible = false
-  ElMessage.success('已添加到桌面')
 }
 
-/* ------------------------------ 抽屉与窗口 ------------------------------ */
+/* ------------------------------ Dock / 面板 ------------------------------ */
 const storeVisible = ref(false)
 const settingsVisible = ref(false)
-const windowState = reactive({ visible: false, key: '' })
+const iconsHidden = ref(false)
 
-/* ------------------------------ 深链接兼容 ------------------------------ */
-/* 桌面模式下访问 /xxx 工具路由 → 转为窗口打开,URL 拉回 / */
+type DockAction = 'home' | 'add' | 'store' | 'settings'
+const systemDock = [
+  { key: 'sys-home', label: '首页', icon: 'HomeFilled', accent: '#667eea', action: 'home' as DockAction },
+  { key: 'sys-add', label: '添加 App', icon: 'CirclePlus', accent: '#22c55e', action: 'add' as DockAction },
+  { key: 'sys-store', label: '应用商店', icon: 'Shop', accent: '#f59e0b', action: 'store' as DockAction },
+  { key: 'sys-settings', label: '设置', icon: 'Setting', accent: '#64748b', action: 'settings' as DockAction },
+]
+
+const pinnedItems = computed(() =>
+  desktop.dock
+    .map((k) => desktop.items.find((i) => i.key === k))
+    .filter((i): i is DesktopItem => Boolean(i)),
+)
+
+function dockAction(action: DockAction) {
+  if (action === 'home') {
+    storeVisible.value = false
+    settingsVisible.value = false
+    windowState.visible = false
+    searchKw.value = ''
+    iconsHidden.value = false
+  } else if (action === 'add') openSiteDialog()
+  else if (action === 'store') storeVisible.value = true
+  else settingsVisible.value = true
+}
+
+/* ------------------------------ 时钟 ------------------------------ */
+const clock = ref(new Date())
+let clockTimer: number | null = null
+const clockTime = computed(() => {
+  const d = clock.value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+})
+const clockDate = computed(() =>
+  new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(clock.value),
+)
+
+/* ------------------------------ 深链接 / 键盘 ------------------------------ */
 watch(() => route.name, (name) => {
   if (desktop.mode !== 'desktop') return
-  if (name && name !== 'home' && TOOL_MAP.has(String(name))) {
-    if (!desktop.isOnDesktop(String(name))) desktop.addTool(String(name))
-    windowState.key = String(name)
-    windowState.visible = true
+  if (name && name !== 'home' && CATALOG_MAP.has(String(name))) {
+    openKey(String(name))
     router.replace('/')
   }
 }, { immediate: true })
 
-/* ------------------------------ 键盘 ------------------------------ */
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
-    paletteVisible.value = true
+    searchRef.value?.focus()
+    searchRef.value?.select()
   }
-  if (e.key === 'Escape') closeMenu()
+  if (e.key === 'Escape') {
+    closeMenu()
+    searchKw.value = ''
+    iconsHidden.value = false
+  }
 }
 
 onMounted(() => {
@@ -184,74 +240,90 @@ onBeforeUnmount(() => {
 
 function toggleDark() {
   appStore.toggleDark()
+  document.documentElement.classList.toggle('dark', appStore.dark)
 }
 
-function iconSizeStyle() {
-  const px = desktop.iconPx
-  return { width: px + 'px', height: px + 'px', fontSize: px * 0.42 + 'px' }
+/** 双击桌面空白处隐藏 / 恢复图标(对齐找Tab 的「双击桌面隐藏」) */
+function onDesktopDblClick(e: MouseEvent) {
+  if (!desktop.doubleClickHide) return
+  const t = e.target as HTMLElement
+  if (t.closest('.icon-tile, .dock-wrap, .topbar, .search-wrap, .clock, .ctx')) return
+  iconsHidden.value = !iconsHidden.value
+  ElMessage.info(iconsHidden.value ? '已隐藏桌面图标,再次双击空白处恢复' : '已恢复桌面图标')
 }
 
-function appMeta(key: string): DesktopAppMeta | undefined {
-  return APP_MAP.get(key)
-}
-
-const siteInitial = (item: DesktopItem) => item.name.slice(0, 1).toUpperCase()
-
-/* ------------------------------ 桌面时钟 ------------------------------ */
-const clock = ref(new Date())
-let clockTimer: number | null = null
-const clockTime = computed(() => {
-  const d = clock.value
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-})
-const clockDate = computed(() =>
-  new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(clock.value),
-)
-
-/* ------------------------------ 打开方式 ------------------------------ */
 function onTileClick(item: DesktopItem) {
-  if (!desktop.doubleClickOpen) openItem(item)
+  if (!desktop.doubleClickOpen) openKey(item.key)
 }
 function onTileDblClick(item: DesktopItem) {
-  if (desktop.doubleClickOpen) openItem(item)
+  if (desktop.doubleClickOpen) openKey(item.key)
 }
 </script>
 
 <template>
-  <div class="desktop" :class="{ 'glass-on': desktop.glass }" :style="{ background: desktop.wallpaperStyle }">
-    <!-- 暗色时加深遮罩保证可读性 -->
-    <div class="dim" :class="{ on: appStore.dark }" />
+  <div
+    class="desktop"
+    :class="{ 'glass-on': desktop.glass, 'light-bg': isLightBg }"
+    :style="{ background: desktop.wallpaperStyle }"
+    @dblclick="onDesktopDblClick"
+  >
+    <div class="dim" :class="{ on: appStore.dark && !isLightBg }" />
+
+    <!-- 顶部系统栏 -->
+    <header class="topbar">
+      <div class="brand" @click="dockAction('home')">
+        <span class="brand-mark">u</span>
+        <span class="brand-name">uTools</span>
+      </div>
+      <div class="top-actions">
+        <button class="top-btn" title="应用商店" @click="storeVisible = true">
+          <el-icon :size="17"><Shop /></el-icon><span>应用商店</span>
+        </button>
+        <button class="top-btn" title="设置" @click="settingsVisible = true">
+          <el-icon :size="17"><Setting /></el-icon><span>设置</span>
+        </button>
+        <button class="top-btn icon-only" :title="appStore.dark ? '切到亮色' : '切到暗色'" @click="toggleDark">
+          <el-icon :size="17"><Sunny v-if="appStore.dark" /><Moon v-else /></el-icon>
+        </button>
+      </div>
+    </header>
 
     <!-- 桌面时钟 -->
-    <div v-if="desktop.showClock" class="clock glass">
+    <div v-if="desktop.showClock" class="clock">
       <div class="clock-time">{{ clockTime }}</div>
       <div class="clock-date">{{ clockDate }}</div>
     </div>
 
-    <!-- 中央搜索 -->
+    <!-- 中央搜索(支持拼音) -->
     <div class="search-wrap">
       <div class="search glass">
-        <el-icon><Search /></el-icon>
+        <el-icon :size="18"><Search /></el-icon>
         <input
+          ref="searchRef"
           v-model="searchKw"
           class="search-input"
-          placeholder="搜索应用与工具…"
+          placeholder="搜索工具或应用,支持拼音(如 chakanqi、ewm)"
           @keydown.enter="onSearchEnter"
         />
         <kbd class="kbd">⌘K</kbd>
       </div>
       <div v-if="searchKw && searchHits.length" class="hits glass">
-        <div v-for="h in searchHits" :key="h.key" class="hit" @click="openItem(h); searchKw = ''">
-          <span class="hit-icon" :style="{ background: h.accent }">{{ h.kind === 'site' ? siteInitial(h) : h.name.slice(0, 1) }}</span>
+        <div v-for="h in searchHits" :key="h.key" class="hit" @click="onHit(h)">
+          <AppIcon
+            :name="h.name" :icon="h.icon" :accent="h.accent"
+            :emoji="h.emoji" :icon-url="h.iconUrl" :size="30" :font-size="15"
+          />
           <span class="hit-name">{{ h.name }}</span>
-          <span class="hit-kind">{{ h.kind === 'tool' ? '工具' : h.kind === 'app' ? '应用' : '网站' }}</span>
+          <span v-if="h.isNew" class="hit-badge new">新</span>
+          <span v-else-if="h.isHot" class="hit-badge hot">最热</span>
+          <span class="hit-kind">{{ hitKind(h) }}</span>
         </div>
       </div>
+      <div v-else-if="searchKw" class="hits glass empty">没有找到相关应用,试试「应用商店」</div>
     </div>
 
-    <!-- 图标网格 -->
-    <div class="icon-grid">
+    <!-- 应用图标网格 -->
+    <div v-show="!iconsHidden" class="icon-grid">
       <div
         v-for="(item, index) in desktop.items"
         :key="item.key"
@@ -267,89 +339,111 @@ function onTileDblClick(item: DesktopItem) {
         @dblclick="onTileDblClick(item)"
         @contextmenu="onContext($event, item)"
       >
-        <div class="tile-icon glass" :style="iconSizeStyle()">
-          <el-icon v-if="item.kind !== 'site'" :size="26" :color="item.accent">
-            <component :is="iconOf(item.icon)" />
-          </el-icon>
-          <span v-else class="site-letter" :style="{ color: '#fff', background: item.accent }">{{ siteInitial(item) }}</span>
+        <div class="tile-icon-wrap" :style="iconBoxStyle">
+          <AppIcon
+            :name="item.name" :icon="item.icon" :accent="item.accent"
+            :emoji="item.emoji" :icon-url="item.iconUrl"
+            :size="iconPx" :rounded="desktop.iconStyle === 'rounded'"
+          />
+          <span v-if="item.isNew" class="tile-badge new">新</span>
+          <span v-else-if="item.isHot" class="tile-badge hot">热</span>
         </div>
         <span v-if="desktop.showLabels" class="tile-name">{{ item.name }}</span>
       </div>
     </div>
 
-    <!-- Dock -->
-    <div class="dock-wrap">
+    <!-- 底部 Dock:固定系统图标 + 用户固定应用 -->
+    <div v-if="desktop.showDock" class="dock-wrap">
       <div class="dock glass">
         <div
-          v-for="k in desktop.dock"
-          :key="k"
-          class="dock-item"
-          :title="desktop.items.find(i => i.key === k)?.name || k"
-          @click="openKey(k)"
+          v-for="s in systemDock"
+          :key="s.key"
+          class="dock-item sys"
+          :title="s.label"
+          @click="dockAction(s.action)"
         >
-          <span class="dock-icon" :style="{ background: desktop.items.find(i => i.key === k)?.accent || '#64748b' }">
-            {{ (desktop.items.find(i => i.key === k)?.name || k).slice(0, 1) }}
-          </span>
+          <AppIcon :name="s.label" :icon="s.icon" :accent="s.accent" :size="42" :font-size="21" />
+          <span class="dock-tip">{{ s.label }}</span>
         </div>
-        <div v-if="!desktop.dock.length" class="dock-empty">右键图标可固定到 Dock</div>
+        <div v-if="pinnedItems.length" class="dock-sep" />
+        <div
+          v-for="item in pinnedItems"
+          :key="item.key"
+          class="dock-item"
+          :title="item.name"
+          @click="openKey(item.key)"
+        >
+          <AppIcon
+            :name="item.name" :icon="item.icon" :accent="item.accent"
+            :emoji="item.emoji" :icon-url="item.iconUrl" :size="42"
+          />
+          <span class="dock-tip">{{ item.name }}</span>
+        </div>
+        <div v-if="!pinnedItems.length" class="dock-empty">右键图标可固定到 Dock</div>
       </div>
-    </div>
-
-    <!-- 底部操作条 -->
-    <div class="action-bar glass">
-      <button class="action" @click="openSiteDialog"><el-icon><Link /></el-icon>添加 App</button>
-      <button class="action" @click="storeVisible = true"><el-icon><CirclePlus /></el-icon>应用商店</button>
-      <button class="action" @click="settingsVisible = true"><el-icon><Setting /></el-icon>设置</button>
     </div>
 
     <!-- 右键菜单 -->
     <teleport to="body">
-      <div v-if="menu.visible" class="ctx glass" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <div v-if="menu.visible" class="ctx glass" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @click.stop>
         <button @click="menuOpen">打开</button>
         <button @click="menuPin">{{ desktop.isDocked(menu.item?.key || '') ? '从 Dock 移除' : '固定到 Dock' }}</button>
-        <button class="danger" @click="menuRemove">从桌面移除</button>
+        <button v-if="menu.item?.kind === 'site'" @click="menuEdit">编辑网站</button>
+        <button class="danger" @click="menuHide">{{ menu.item?.kind === 'site' ? '删除' : '隐藏应用' }}</button>
       </div>
     </teleport>
 
-    <!-- 添加网站对话框 -->
-    <el-dialog v-model="siteDialog.visible" title="添加 App(网站快捷方式)" width="380px">
-      <el-form label-width="60px">
+    <!-- 添加 / 编辑网站 -->
+    <el-dialog v-model="siteDialog.visible" :title="siteDialog.editKey ? '编辑 App' : '添加 App(网站快捷方式)'" width="420px">
+      <el-form label-width="72px">
         <el-form-item label="名称">
           <el-input v-model="siteDialog.name" placeholder="如:公司邮箱" />
         </el-form-item>
         <el-form-item label="网址">
           <el-input v-model="siteDialog.url" placeholder="https://mail.example.com" />
         </el-form-item>
+        <el-form-item label="图标 URL">
+          <el-input v-model="siteDialog.iconUrl" placeholder="可选,留空则用 emoji / 首字母" />
+        </el-form-item>
+        <el-form-item label="Emoji">
+          <el-input v-model="siteDialog.emoji" placeholder="可选,如 🌈" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="siteDialog.visible = false">取消</el-button>
-        <el-button type="primary" :icon="Plus" @click="confirmSite">添加</el-button>
+        <el-button type="primary" :icon="CirclePlus" @click="confirmSite">{{ siteDialog.editKey ? '保存' : '添加到桌面' }}</el-button>
       </template>
     </el-dialog>
 
-    <!-- 应用商店 / 设置抽屉 -->
+    <!-- 应用商店 / 设置(P2-P4 会替换为整页面板) -->
     <StoreDrawer v-model="storeVisible" @open="openKey" />
     <SettingsDrawer v-model="settingsVisible" />
 
     <!-- 应用窗口 -->
     <AppWindow :visible="windowState.visible" :app-key="windowState.key" @close="windowState.visible = false" />
-
-    <!-- 命令面板 -->
-    <CommandPalette v-model="paletteVisible" />
-
-    <!-- 主题切换悬浮钮 -->
-    <button class="theme-btn glass" :title="appStore.dark ? '切到亮色' : '切到暗色'" @click="toggleDark">
-      <el-icon><Sunny v-if="appStore.dark" /><Moon v-else /></el-icon>
-    </button>
   </div>
 </template>
 
 <style scoped>
 .desktop {
+  --fg: #fff;
+  --fg-soft: rgb(255 255 255 / 82%);
+  --glass-bg: rgb(255 255 255 / 18%);
+  --glass-border: rgb(255 255 255 / 24%);
+  --shadow: 0 8px 28px rgb(15 23 42 / 22%);
   position: relative;
   height: 100%;
+  min-height: 100vh;
   overflow: auto;
-  color: #fff;
+  color: var(--fg);
+  background-size: cover;
+}
+.desktop.light-bg {
+  --fg: #1e293b;
+  --fg-soft: rgb(30 41 59 / 72%);
+  --glass-bg: rgb(255 255 255 / 58%);
+  --glass-border: rgb(255 255 255 / 78%);
+  --shadow: 0 8px 28px rgb(30 41 59 / 14%);
 }
 .dim {
   position: absolute;
@@ -358,283 +452,276 @@ function onTileDblClick(item: DesktopItem) {
   transition: background 0.3s;
   pointer-events: none;
 }
-.dim.on {
-  background: rgb(0 0 0 / 35%);
-}
+.dim.on { background: rgb(0 0 0 / 32%); }
 .glass {
-  background: rgb(255 255 255 / 24%);
-  border: 1px solid rgb(255 255 255 / 22%);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
 }
-/* 毛玻璃开关:开启时才应用模糊与更透的底色 */
 .glass-on .glass {
-  background: rgb(255 255 255 / 14%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
 
-/* 桌面时钟 */
+/* 顶部系统栏 */
+.topbar {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 17px;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  box-shadow: 0 4px 12px rgb(102 126 234 / 45%);
+}
+.brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 25%);
+}
+.top-actions { display: flex; align-items: center; gap: 6px; }
+.top-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--glass-bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.top-btn:hover { transform: translateY(-1px); border-color: var(--glass-border); }
+.top-btn.icon-only { padding: 8px; }
+
+/* 时钟 */
 .clock {
   position: absolute;
-  top: 18px;
-  left: 22px;
-  padding: 12px 18px;
-  border-radius: 16px;
-  color: #fff;
-  text-align: left;
-  pointer-events: none;
+  top: 68px;
+  left: 24px;
   z-index: 5;
+  pointer-events: none;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 28%);
 }
+.light-bg .clock { text-shadow: 0 1px 4px rgb(255 255 255 / 60%); }
 .clock-time {
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
-  text-shadow: 0 1px 6px rgb(0 0 0 / 35%);
+  line-height: 1.1;
 }
-.clock-date {
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgb(255 255 255 / 85%);
-  text-shadow: 0 1px 4px rgb(0 0 0 / 35%);
-}
+.clock-date { margin-top: 2px; font-size: 12px; color: var(--fg-soft); }
 
-/* 搜索 */
+/* 中央搜索 */
 .search-wrap {
   position: relative;
-  max-width: 520px;
-  margin: 9vh auto 0;
+  z-index: 8;
+  max-width: 560px;
+  margin: 8vh auto 0;
   padding: 0 20px;
 }
 .search {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 48px;
-  padding: 0 16px;
-  border-radius: 24px;
-  color: rgb(255 255 255 / 85%);
+  height: 50px;
+  padding: 0 18px;
+  border-radius: 26px;
+  color: var(--fg);
+  box-shadow: var(--shadow);
 }
 .search-input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
   font-size: 14px;
   color: inherit;
 }
-.search-input::placeholder {
-  color: rgb(255 255 255 / 45%);
-}
+.search-input::placeholder { color: var(--fg-soft); opacity: 0.8; }
 .kbd {
   padding: 2px 7px;
-  border-radius: 5px;
-  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
   font-size: 11px;
-  color: rgb(255 255 255 / 60%);
+  color: var(--fg-soft);
+  white-space: nowrap;
 }
 .hits {
   position: absolute;
-  top: 56px;
+  top: 58px;
   left: 20px;
   right: 20px;
   border-radius: 16px;
-  padding: 8px;
-  z-index: 20;
+  padding: 7px;
+  box-shadow: var(--shadow);
+  max-height: 380px;
+  overflow-y: auto;
 }
+.hits.empty { padding: 14px; text-align: center; font-size: 12px; color: var(--fg-soft); }
 .hit {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 7px 10px;
+  border-radius: 11px;
   cursor: pointer;
+}
+.hit:hover { background: var(--glass-bg); }
+.hit-name { flex: 1; font-size: 13px; }
+.hit-kind { font-size: 11px; color: var(--fg-soft); white-space: nowrap; }
+.hit-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 7px;
   color: #fff;
 }
-.hit:hover {
-  background: rgb(255 255 255 / 14%);
-}
-.hit-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  flex: none;
-}
-.hit-name {
-  flex: 1;
-  font-size: 13px;
-}
-.hit-kind {
-  font-size: 11px;
-  color: rgb(255 255 255 / 50%);
-}
+.hit-badge.new { background: #22c55e; }
+.hit-badge.hot { background: #f97316; }
 
 /* 图标网格 */
 .icon-grid {
+  position: relative;
+  z-index: 5;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 18px 8px;
-  max-width: 860px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 20px 8px;
+  max-width: 920px;
   margin: 5vh auto 0;
-  padding: 0 24px 20px;
+  padding: 0 24px 190px;
 }
 .icon-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   cursor: grab;
   border-radius: 14px;
   padding: 8px 4px;
   transition: background 0.15s, transform 0.15s;
 }
-.icon-tile:hover {
-  background: rgb(255 255 255 / 10%);
-}
-.icon-tile.dragging {
-  opacity: 0.35;
-}
-.icon-tile.over {
-  outline: 2px dashed rgb(255 255 255 / 50%);
-}
-.tile-icon {
-  display: grid;
-  place-items: center;
-  border-radius: 26%;
-  color: #fff;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
-}
-.site-letter {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  border-radius: 26%;
+.icon-tile:hover { background: var(--glass-bg); transform: translateY(-2px); }
+.icon-tile.dragging { opacity: 0.35; }
+.icon-tile.over { outline: 2px dashed var(--glass-border); }
+.tile-icon-wrap { position: relative; }
+.tile-icon-wrap :deep(.app-icon) { box-shadow: 0 8px 20px rgb(15 23 42 / 26%), inset 0 1px 0 rgb(255 255 255 / 28%); }
+.icon-tile:hover .tile-icon-wrap :deep(.app-icon) { transform: scale(1.06); }
+.tile-badge {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  font-size: 10px;
   font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: #fff;
+  border: 2px solid rgb(255 255 255 / 85%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 20%);
 }
+.tile-badge.new { background: #22c55e; }
+.tile-badge.hot { background: #f97316; }
 .tile-name {
   font-size: 12px;
-  color: rgb(255 255 255 / 92%);
-  text-shadow: 0 1px 4px rgb(0 0 0 / 35%);
-  max-width: 88px;
+  color: var(--fg);
+  text-shadow: 0 1px 5px rgb(0 0 0 / 30%);
+  max-width: 92px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
 }
+.light-bg .tile-name { text-shadow: 0 1px 3px rgb(255 255 255 / 80%); }
 
 /* Dock */
 .dock-wrap {
-  position: sticky;
-  bottom: 64px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 18px;
   display: flex;
   justify-content: center;
   pointer-events: none;
+  z-index: 20;
 }
 .dock {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: 20px;
-  min-height: 56px;
-  min-width: 120px;
-  max-width: 80vw;
+  gap: 9px;
+  padding: 9px 14px;
+  border-radius: 22px;
+  min-height: 62px;
+  max-width: 88vw;
   overflow-x: auto;
+  box-shadow: var(--shadow);
 }
-.dock-item {
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-.dock-item:hover {
-  transform: translateY(-4px) scale(1.06);
-}
-.dock-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 15px;
-}
-.dock-empty {
-  font-size: 12px;
-  color: rgb(255 255 255 / 45%);
-  padding: 0 6px;
-}
-
-/* 底部操作条 */
-.action-bar {
-  position: fixed;
+.dock-item { position: relative; cursor: pointer; transition: transform 0.16s; }
+.dock-item:hover { transform: translateY(-6px) scale(1.06); }
+.dock-item :deep(.app-icon) { box-shadow: 0 5px 14px rgb(15 23 42 / 25%), inset 0 1px 0 rgb(255 255 255 / 25%); }
+.dock-sep { width: 1px; height: 34px; background: var(--glass-border); margin: 0 3px; flex: none; }
+.dock-empty { font-size: 12px; color: var(--fg-soft); padding: 0 8px; white-space: nowrap; }
+.dock-tip {
+  position: absolute;
+  bottom: 52px;
   left: 50%;
-  transform: translateX(-50%);
-  bottom: 12px;
-  display: flex;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 16px;
-  z-index: 30;
+  transform: translateX(-50%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+  padding: 4px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: rgb(15 23 42 / 88%);
+  color: #fff;
+  transition: opacity 0.15s, transform 0.15s;
 }
-.action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: rgb(255 255 255 / 85%);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.action:hover {
-  background: rgb(255 255 255 / 14%);
-}
+.dock-item:hover .dock-tip { opacity: 1; transform: translateX(-50%) scale(1); }
 
 /* 右键菜单 */
 .ctx {
   position: fixed;
   z-index: 2000;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 6px;
   display: flex;
   flex-direction: column;
-  min-width: 150px;
+  min-width: 158px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 .ctx button {
   border: none;
   background: transparent;
   text-align: left;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 9px;
   font-size: 13px;
-  color: #fff;
+  color: var(--fg);
   cursor: pointer;
 }
-.ctx button:hover {
-  background: rgb(255 255 255 / 14%);
-}
-.ctx button.danger {
-  color: #fca5a5;
-}
-
-.theme-btn {
-  position: fixed;
-  top: 14px;
-  right: 14px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  cursor: pointer;
-  z-index: 40;
-}
+.ctx button:hover { background: var(--glass-bg); }
+.ctx button.danger { color: #f87171; }
 </style>

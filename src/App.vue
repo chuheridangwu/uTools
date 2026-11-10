@@ -31,6 +31,8 @@ const paletteVisible = ref(false)
 
 /** 全局快捷键:Ctrl/⌘ + K 打开命令面板 */
 function onKeydown(e: KeyboardEvent) {
+  // 桌面模式下 Ctrl/⌘+K 由 DesktopHome 接管(聚焦桌面搜索框)
+  if (desktop.mode === 'desktop') return
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     paletteVisible.value = true

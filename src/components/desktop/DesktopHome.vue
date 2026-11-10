@@ -8,15 +8,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import {
-  CirclePlus,
-  HomeFilled,
-  Moon,
-  Search,
-  Setting,
-  Shop,
-  Sunny,
-} from '@element-plus/icons-vue'
+import { Moon, Search, Setting, Shop, Sunny } from '@element-plus/icons-vue'
 import { useDesktopStore, type DesktopItem } from '@/stores/desktop'
 import { useAppStore } from '@/stores/app'
 import {
@@ -28,8 +20,9 @@ import {
 import { LIGHT_WALLPAPERS } from '@/config/wallpapers'
 import AppIcon from './AppIcon.vue'
 import AppWindow from './AppWindow.vue'
-import StoreDrawer from './StoreDrawer.vue'
-import SettingsDrawer from './SettingsDrawer.vue'
+import StorePage from './StorePage.vue'
+import AddAppPage from './AddAppPage.vue'
+import SettingsPage from './SettingsPage.vue'
 
 defineOptions({ name: 'DesktopHome' })
 
@@ -133,38 +126,44 @@ function menuHide() {
   }
   closeMenu()
 }
-function menuEdit() { if (menu.item) openSiteDialog(menu.item); closeMenu() }
+function menuEdit() { if (menu.item) openAddPage(menu.item); closeMenu() }
 
-/* ------------------------------ 添加 / 编辑网站 ------------------------------ */
-const siteDialog = reactive({ visible: false, editKey: '', name: '', url: '', iconUrl: '', emoji: '' })
-function openSiteDialog(item?: DesktopItem) {
-  siteDialog.visible = true
-  siteDialog.editKey = item?.kind === 'site' ? item.key : ''
-  siteDialog.name = item?.name ?? ''
-  siteDialog.url = item?.url ?? ''
-  siteDialog.iconUrl = item?.iconUrl ?? ''
-  siteDialog.emoji = item?.emoji ?? ''
-}
-function confirmSite() {
-  if (!siteDialog.name.trim() || !siteDialog.url.trim()) {
-    ElMessage.warning('名称和网址都要填')
-    return
-  }
-  const extra = { iconUrl: siteDialog.iconUrl.trim(), emoji: siteDialog.emoji.trim(), accent: '#667eea' }
-  if (siteDialog.editKey) {
-    desktop.editSite(siteDialog.editKey, { name: siteDialog.name.trim(), url: siteDialog.url.trim(), ...extra })
-    ElMessage.success('已保存修改')
-  } else {
-    desktop.addSite(siteDialog.name.trim(), siteDialog.url.trim(), extra)
-    ElMessage.success('已添加到桌面')
-  }
-  siteDialog.visible = false
+/* ------------------------------ 添加 / 编辑 App ------------------------------ */
+const addPageProps = reactive({
+  site: null as DesktopItem | null,
+  initialUrl: '',
+  initialName: '',
+})
+function openAddPage(item?: DesktopItem, initial?: { url: string; name: string }) {
+  addPageProps.site = item?.kind === 'site' ? item : null
+  addPageProps.initialUrl = initial?.url ?? ''
+  addPageProps.initialName = initial?.name ?? ''
+  panel.value = 'add'
 }
 
-/* ------------------------------ Dock / 面板 ------------------------------ */
-const storeVisible = ref(false)
-const settingsVisible = ref(false)
+/* ------------------------------ Dock / 整页面板 ------------------------------ */
+type Panel = '' | 'store' | 'add' | 'settings'
 const iconsHidden = ref(false)
+
+/**
+ * 面板状态与 URL 同步,对齐找Tab 的 /store、/setting、/add-app 独立页面:
+ * ?p=store / ?p=settings / ?p=add-app 可直接分享打开,浏览器前进/后退也能切换。
+ * 用 vue-router 的 query 而非新增路由记录,避免与工具路由和桌面浮层冲突。
+ */
+const panel = computed<Panel>({
+  get() {
+    const p = route.query.p
+    if (p === 'store' || p === 'settings') return p
+    if (p === 'add-app' || p === 'add') return 'add'
+    return ''
+  },
+  set(v) {
+    const q = { ...route.query }
+    if (v) q.p = v === 'add' ? 'add-app' : v
+    else delete q.p
+    router.replace({ query: q })
+  },
+})
 
 type DockAction = 'home' | 'add' | 'store' | 'settings'
 const systemDock = [
@@ -182,14 +181,13 @@ const pinnedItems = computed(() =>
 
 function dockAction(action: DockAction) {
   if (action === 'home') {
-    storeVisible.value = false
-    settingsVisible.value = false
+    panel.value = ''
     windowState.visible = false
     searchKw.value = ''
     iconsHidden.value = false
-  } else if (action === 'add') openSiteDialog()
-  else if (action === 'store') storeVisible.value = true
-  else settingsVisible.value = true
+  } else if (action === 'add') openAddPage()
+  else if (action === 'store') panel.value = 'store'
+  else panel.value = 'settings'
 }
 
 /* ------------------------------ 时钟 ------------------------------ */
@@ -223,6 +221,7 @@ function onKeydown(e: KeyboardEvent) {
     closeMenu()
     searchKw.value = ''
     iconsHidden.value = false
+    if (panel.value) panel.value = ''
   }
 }
 
@@ -231,6 +230,16 @@ onMounted(() => {
   window.addEventListener('click', closeMenu)
   document.documentElement.classList.toggle('dark', appStore.dark)
   clockTimer = window.setInterval(() => { clock.value = new Date() }, 1000)
+  // 书签小工具:?add=<网址>&name=<标题> → 直接打开添加 App 页并预填,
+  // 随后把地址收敛成 ?p=add-app,避免网址/标题长期留在地址栏里。
+  const params = new URLSearchParams(window.location.search)
+  const addUrl = params.get('add')
+  if (addUrl) {
+    addPageProps.site = null
+    addPageProps.initialUrl = addUrl
+    addPageProps.initialName = params.get('name') ?? ''
+    router.replace({ query: { p: 'add-app' } })
+  }
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
@@ -276,10 +285,10 @@ function onTileDblClick(item: DesktopItem) {
         <span class="brand-name">uTools</span>
       </div>
       <div class="top-actions">
-        <button class="top-btn" title="应用商店" @click="storeVisible = true">
+        <button class="top-btn" title="应用商店" @click="panel = 'store'">
           <el-icon :size="17"><Shop /></el-icon><span>应用商店</span>
         </button>
-        <button class="top-btn" title="设置" @click="settingsVisible = true">
+        <button class="top-btn" title="设置" @click="panel = 'settings'">
           <el-icon :size="17"><Setting /></el-icon><span>设置</span>
         </button>
         <button class="top-btn icon-only" :title="appStore.dark ? '切到亮色' : '切到暗色'" @click="toggleDark">
@@ -393,31 +402,21 @@ function onTileDblClick(item: DesktopItem) {
       </div>
     </teleport>
 
-    <!-- 添加 / 编辑网站 -->
-    <el-dialog v-model="siteDialog.visible" :title="siteDialog.editKey ? '编辑 App' : '添加 App(网站快捷方式)'" width="420px">
-      <el-form label-width="72px">
-        <el-form-item label="名称">
-          <el-input v-model="siteDialog.name" placeholder="如:公司邮箱" />
-        </el-form-item>
-        <el-form-item label="网址">
-          <el-input v-model="siteDialog.url" placeholder="https://mail.example.com" />
-        </el-form-item>
-        <el-form-item label="图标 URL">
-          <el-input v-model="siteDialog.iconUrl" placeholder="可选,留空则用 emoji / 首字母" />
-        </el-form-item>
-        <el-form-item label="Emoji">
-          <el-input v-model="siteDialog.emoji" placeholder="可选,如 🌈" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="siteDialog.visible = false">取消</el-button>
-        <el-button type="primary" :icon="CirclePlus" @click="confirmSite">{{ siteDialog.editKey ? '保存' : '添加到桌面' }}</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 应用商店 / 设置(P2-P4 会替换为整页面板) -->
-    <StoreDrawer v-model="storeVisible" @open="openKey" />
-    <SettingsDrawer v-model="settingsVisible" />
+    <!-- 整页:应用商店 / 添加 App / 设置 -->
+    <StorePage
+      v-if="panel === 'store'"
+      @close="panel = ''"
+      @add-app="openAddPage()"
+      @open="openKey"
+    />
+    <AddAppPage
+      v-if="panel === 'add'"
+      :site="addPageProps.site"
+      :initial-url="addPageProps.initialUrl"
+      :initial-name="addPageProps.initialName"
+      @close="panel = ''"
+    />
+    <SettingsPage v-if="panel === 'settings'" @close="panel = ''" />
 
     <!-- 应用窗口 -->
     <AppWindow :visible="windowState.visible" :app-key="windowState.key" @close="windowState.visible = false" />
@@ -699,8 +698,11 @@ function onTileDblClick(item: DesktopItem) {
 }
 .dock-item:hover .dock-tip { opacity: 1; transform: translateX(-50%) scale(1); }
 
-/* 右键菜单 */
+/* 右键菜单:teleport 到 body,拿不到 .desktop 上的 CSS 变量,需自带配色 */
 .ctx {
+  --ctx-bg: rgb(255 255 255 / 92%);
+  --ctx-fg: #1f2937;
+  --ctx-hover: rgb(102 126 234 / 12%);
   position: fixed;
   z-index: 2000;
   border-radius: 14px;
@@ -708,9 +710,16 @@ function onTileDblClick(item: DesktopItem) {
   display: flex;
   flex-direction: column;
   min-width: 158px;
-  box-shadow: var(--shadow);
+  background: var(--ctx-bg);
+  color: var(--ctx-fg);
+  box-shadow: 0 10px 30px rgb(15 23 42 / 26%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+html.dark .ctx {
+  --ctx-bg: rgb(27 36 52 / 94%);
+  --ctx-fg: #e5e7eb;
+  --ctx-hover: rgb(255 255 255 / 10%);
 }
 .ctx button {
   border: none;
@@ -719,9 +728,9 @@ function onTileDblClick(item: DesktopItem) {
   padding: 9px 12px;
   border-radius: 9px;
   font-size: 13px;
-  color: var(--fg);
+  color: var(--ctx-fg);
   cursor: pointer;
 }
-.ctx button:hover { background: var(--glass-bg); }
+.ctx button:hover { background: var(--ctx-hover); }
 .ctx button.danger { color: #f87171; }
 </style>

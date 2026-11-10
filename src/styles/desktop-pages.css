@@ -1,0 +1,229 @@
+/**
+ * 桌面模式内页(应用商店 / 添加 App / 设置)共用样式
+ * 仿找Tab 的浅色卡片式内页:白卡 + 紫蓝主色 + 圆角胶囊标签。
+ * html.dark 时自动切到深色卡片,跟随全局明暗主题。
+ */
+.zt-page {
+  --zt-bg: #f4f6fb;
+  --zt-card: #ffffff;
+  --zt-text: #1f2937;
+  --zt-sub: #6b7280;
+  --zt-border: #e6e9f0;
+  --zt-soft: #f2f4fa;
+  --zt-brand: #667eea;
+  --zt-shadow: 0 6px 22px rgb(31 41 55 / 7%);
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: var(--zt-bg);
+  color: var(--zt-text);
+  font-size: 14px;
+}
+html.dark .zt-page {
+  --zt-bg: #111827;
+  --zt-card: #1b2434;
+  --zt-text: #e5e7eb;
+  --zt-sub: #94a3b8;
+  --zt-border: #2b3648;
+  --zt-soft: #232d3f;
+  --zt-shadow: 0 6px 22px rgb(0 0 0 / 25%);
+}
+.zt-page-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+.zt-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 24px 14px;
+  background: color-mix(in srgb, var(--zt-bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.zt-back {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--zt-border);
+  border-radius: 12px;
+  background: var(--zt-card);
+  color: var(--zt-text);
+  cursor: pointer;
+  box-shadow: var(--zt-shadow);
+  transition: transform 0.15s;
+}
+.zt-back:hover { transform: translateX(-2px); }
+.zt-h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: 0.3px; }
+.zt-sub { color: var(--zt-sub); font-size: 12px; margin-top: 3px; }
+.zt-head-spacer { flex: 1; }
+.zt-card {
+  background: var(--zt-card);
+  border: 1px solid var(--zt-border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--zt-shadow);
+  margin-bottom: 18px;
+}
+.zt-card-title { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+.zt-card-desc { font-size: 12px; color: var(--zt-sub); margin: 0 0 16px; }
+.zt-section-label { font-size: 12px; font-weight: 700; color: var(--zt-sub); margin: 18px 0 10px; letter-spacing: 0.5px; }
+.zt-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 260px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--zt-border);
+  border-radius: 20px;
+  background: var(--zt-card);
+  color: var(--zt-sub);
+  box-shadow: var(--zt-shadow);
+}
+.zt-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--zt-text);
+}
+.zt-search input::placeholder { color: var(--zt-sub); }
+.zt-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
+.zt-tab {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--zt-sub);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.zt-tab.on { background: var(--zt-brand); color: #fff; box-shadow: 0 4px 12px rgb(102 126 234 / 35%); }
+.zt-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 16px; }
+.zt-chip {
+  border: 1px solid var(--zt-border);
+  background: var(--zt-card);
+  color: var(--zt-text);
+  border-radius: 15px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.zt-chip:hover { border-color: var(--zt-brand); }
+.zt-chip.on { background: var(--zt-brand); border-color: var(--zt-brand); color: #fff; }
+.zt-chip-count { opacity: 0.65; margin-left: 4px; font-size: 11px; }
+.zt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--zt-border);
+  background: var(--zt-card);
+  color: var(--zt-text);
+  border-radius: 11px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.zt-btn:hover { border-color: var(--zt-brand); transform: translateY(-1px); }
+.zt-btn.primary { background: var(--zt-brand); border-color: var(--zt-brand); color: #fff; }
+.zt-btn.primary:hover { filter: brightness(1.07); }
+.zt-btn.added { background: var(--zt-soft); border-color: var(--zt-border); color: var(--zt-sub); }
+.zt-btn.danger { color: #ef4444; border-color: color-mix(in srgb, #ef4444 35%, var(--zt-border)); }
+.zt-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.zt-link { border: none; background: transparent; color: var(--zt-brand); font-size: 12px; cursor: pointer; padding: 4px; }
+.zt-link:hover { text-decoration: underline; }
+.zt-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 7px;
+  color: #fff;
+  line-height: 1.5;
+}
+.zt-badge.new { background: #22c55e; }
+.zt-badge.hot { background: #f97316; }
+.zt-badge.login { background: #8b5cf6; }
+.zt-badge.kind { background: var(--zt-soft); color: var(--zt-sub); }
+.zt-empty { text-align: center; color: var(--zt-sub); padding: 40px 12px; font-size: 13px; }
+.zt-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--zt-border);
+}
+.zt-row-between:last-child { border-bottom: none; }
+.zt-row-label { font-size: 13px; font-weight: 600; }
+.zt-row-tip { font-size: 11px; color: var(--zt-sub); margin-top: 2px; }
+.zt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.zt-form-row { margin-bottom: 14px; }
+.zt-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.zt-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--zt-border);
+  border-radius: 10px;
+  background: var(--zt-card);
+  color: var(--zt-text);
+  font-size: 13px;
+  outline: none;
+}
+.zt-input:focus { border-color: var(--zt-brand); box-shadow: 0 0 0 3px rgb(102 126 234 / 14%); }
+.zt-hint { font-size: 11px; color: var(--zt-sub); margin-top: 5px; }
+.zt-divider { height: 1px; background: var(--zt-border); margin: 16px 0; }
+.zt-inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.zt-wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.zt-wall {
+  position: relative;
+  height: 84px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  box-shadow: var(--zt-shadow);
+}
+.zt-wall.on { border-color: var(--zt-brand); }
+.zt-wall-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #fff;
+  background: linear-gradient(transparent, rgb(0 0 0 / 55%));
+  text-shadow: 0 1px 3px rgb(0 0 0 / 50%);
+}
+.zt-wall.upload {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--zt-border);
+  background: var(--zt-soft);
+  color: var(--zt-sub);
+  font-size: 12px;
+  box-shadow: none;
+}

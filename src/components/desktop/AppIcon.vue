@@ -4,7 +4,7 @@
  * 优先级:iconUrl → emoji → Element Plus 图标 → 名称首字。
  * 底色由 accent 生成一层柔和渐变,圆角风格随 iconStyle 切换。
  */
-import { computed, type Component } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import * as ElIcons from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{
@@ -35,9 +35,11 @@ const initial = computed(() => props.name.slice(0, 1).toUpperCase())
 const px = computed(() => `${props.size}px`)
 const iconSizeNum = computed(() => Math.round(props.fontSize || props.size * 0.46))
 const iconPx = computed(() => `${iconSizeNum.value}px`)
-function onImgError(e: Event) {
-  (e.target as HTMLImageElement).style.display = 'none'
-}
+
+/** 外链 favicon 可能离线/失效,失败后回退到 emoji、内置图标或首字,避免出现空白图标 */
+const imgFailed = ref(false)
+watch(() => props.iconUrl, () => { imgFailed.value = false }, { immediate: true })
+function onImgError() { imgFailed.value = true }
 const boxStyle = computed(() => ({
   width: px.value,
   height: px.value,
@@ -48,7 +50,7 @@ const boxStyle = computed(() => ({
 
 <template>
   <div class="app-icon" :style="boxStyle">
-    <img v-if="iconUrl" :src="iconUrl" class="glyph-img" :alt="name" @error="onImgError" />
+    <img v-if="iconUrl && !imgFailed" :src="iconUrl" class="glyph-img" :alt="name" @error="onImgError" />
     <span v-else-if="emoji" class="glyph-emoji" :style="{ fontSize: iconPx }">{{ emoji }}</span>
     <el-icon v-else-if="glyph" :size="iconSizeNum" color="#fff">
       <component :is="glyph" />

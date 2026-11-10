@@ -7,7 +7,8 @@
 > 第 1~6 节记录的是工具站早期(2026-10-29 前后)状态;项目此后新增了「桌面模式 / 应用商店」,以下为最新事实。
 
 - **双形态**:`src/config/tools.ts` 是有路由的「工具」注册表;`src/config/desktopApps.ts` 是无路由、以浮层窗口打开的「桌面应用」注册表(分类固定为 效率工具 / 开发工具 / 设计资源 / 生活实用)。桌面状态在 `src/stores/desktop.ts`(localStorage 前缀 `utools_desktop-`),窗口组件 `src/components/desktop/AppWindow.vue`,应用视图统一放 `src/views/apps/*.vue`,由注册表里的 `comp` 动态 import。
-- **当前应用数:58**。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
+- **当前应用数:统一目录 `CATALOG` 85 个(56 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
+- **2026-11-10 起主线任务改为「完整模仿找Tab(https://www.zhaotab.com/)」**,不再只是按批加应用;详见第 8 节。
 - **第 0 节硬性约定仍然有效**。push 报 `HTTP2 framing layer` 或 443 超时时,直接用 `git -c http.proxy=http://127.0.0.1:7897 push origin main`(本机 Clash 系代理),不要写死进 git config。
 - **必须跑 `npm run build`,不能只跑 type-check**:`vue-tsc --noEmit` 不做模板 codegen,模板编译错误只会在 `vite build` 阶段暴露(详见第 7 节的踩坑)。
 
@@ -136,3 +137,27 @@
 - `README.md` 仍是早期版本(只写 27 个工具、未提桌面模式与应用商店),需要对外说明时再更新。
 - 构建仍有 vendor(2.2MB)/ vendor-markdown(1.0MB)/ vendor-ui(943KB)/ heic2any(1.35MB)超 1MB 的提示,属既有情况,非本次引入。
 - 桌面模式图标名来自 `@element-plus/icons-vue`,注册表里写字符串名;新增应用前确认图标名在包内存在(如 `headphones` 不存在,应为 `Headset`)。
+
+## 8. 会话记录(2026-11-10,模仿找Tab 主线)
+
+**用户目标与范围约定(务必遵守):**
+- 目标不是继续按批加应用,而是**完整模仿 `https://www.zhaotab.com/`**:主题、应用商店里的各种应用、「把商店应用添加到桌面」、设置里的功能;游戏除外。
+- **明确不做**:`电台随身听`、`游戏中心`、`3D魔方`、`公众号排版`;商店分类 `游戏`、`阅读` 也不做。
+- 找Tab 没有、而 uTools 已有的功能/分类**一律保留**(`文本工具`/`图片工具`/`数据文件`/`局域网` 等),只是样式按找Tab 做;若某功能只有 uTools 有,按 uTools 自己的方式实现。
+- 样式尽量照着找Tab 做,内页功能样式也一样;云端同步以「仅本地 + 导出/导入 JSON 备份」等价实现,**不接后端**(交接时与用户确认的两条工作假设:桌面模式设为默认首页、账户/云同步做本地等价)。
+
+**架构变化:**
+- `src/config/appCatalog.ts`:唯一目录源,合并 `tools.ts` + `desktopApps.ts`,过滤排除项,生成分类/标签/别名/拼音检索(`pinyin-pro`)/新旧与热度;`CATALOG`、`CATALOG_MAP`、`DEFAULT_DESKTOP_IDS`、`STORE_CATEGORIES`、`ALL_TAGS`、`searchCatalog()` 等都从这里出。新应用**只改两个注册表**,不要另建目录。
+- `src/config/wallpapers.ts`:6 组渐变 + 5 张内联 SVG 风景壁纸(无外链 CDN),`WALLPAPER_GROUPS` 供设置页分组展示。
+- `src/stores/desktop.ts`:状态 v2,单个 localStorage key `utools_desktop-state`;只存用户选择(`desktopIds`/`hiddenIds`/`dockIds`/`customSites`/偏好),`items` 由目录实时派生;带 v1 多 key 迁移、隐藏代替删除、自定义网站增删改、导入导出备份、本地存储用量。
+- 内页改为**整页**(不再是 drawer):`StorePage.vue` / `AddAppPage.vue` / `SettingsPage.vue`,共用 `src/styles/desktop-pages.css`(在 `main.ts` 引入);旧的 `StoreDrawer.vue` / `SettingsDrawer.vue` 已删除。
+- 面板与 URL 同步:`?p=store` / `?p=settings` / `?p=add-app`,书签小工具 `?add=<网址>&name=<标题>`;用 vue-router `query`(不新增路由记录,避免和工具路由冲突),浏览器前进/后退可切换,Esc 返回桌面。
+- `AppIcon.vue` 统一渲染圆角图标:外链图标 → emoji → Element Plus 图标 → 名称首字;外链加载失败会回退,不会留空白图标。
+
+**已完成批次:** P0 `e5648b3`(目录 + 状态 v2)、P1 `8c03f48`(桌面主题/默认首页)、P2–P4(商店/添加 App/设置整页 + 深链接 + 右键菜单配色修复)。
+**验证方式:** `npm run build` 通过;headless Chrome 截图四个页面;CDP 交互检查 9/9 通过(点击开商店、URL 同步、添加应用落盘、返回按钮、Dock 开设置、隐藏应用分组、Esc 返回)。
+
+**P5 待办(补齐找Tab 的非游戏应用,逐批提交推送):**
+- 从 `/tmp/zhaotab-home.html` 的 `<noscript>` 应用清单可提取找Tab 全量 126 个应用名;对照本目录后,尚未覆盖且非游戏/非阅读的候选:字节换算、ASCII 码表、浏览器环境检测、HTTP 状态码查询、CURL 格式化、WebSocket 在线测试、HTML 编辑器、JSON/CSV 转换、端口检测、图片压缩、图片裁切、图片去背景、PDF 裁剪、在线解压文件、随机头像生成、随机图片、字帖生成器、印章生成器、代码美化截图、四象限笔记、手速测试、防休眠、IMEI 校验生成、Whois 查询、SVG 编辑器 等。
+- 优先做纯本地、无需重型库或第三方服务的;需要 ML/外链 API 的(图片去背景、Whois)可降级为「打开外部网站」或跳过,并在交付说明里注明。
+- 每批 5 个:改注册表 + 写视图 → `npm run type-check` + `npm run build` → commit → push。注意第 7 节的 `v-if`/`v-else` 模板踩坑。

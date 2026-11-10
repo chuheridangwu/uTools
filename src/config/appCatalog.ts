@@ -137,6 +137,7 @@ const RELEASE_BATCHES: string[][] = [
   ['nine-grid-cut', 'text-cipher', 'split-bill', 'biorhythm', 'image-to-base64'],
   ['metronome', 'url-parser', 'jwt-decoder', 'text-line-tools', 'svg-pattern'],
   ['byte-converter', 'ascii-table', 'http-status', 'curl-formatter', 'json-csv'],
+  ['image-compress', 'image-crop', 'random-avatar', 'seal-generator', 'code-screenshot'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()

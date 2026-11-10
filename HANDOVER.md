@@ -7,7 +7,7 @@
 > 第 1~6 节记录的是工具站早期(2026-10-29 前后)状态;项目此后新增了「桌面模式 / 应用商店」,以下为最新事实。
 
 - **双形态**:`src/config/tools.ts` 是有路由的「工具」注册表;`src/config/desktopApps.ts` 是无路由、以浮层窗口打开的「桌面应用」注册表(分类固定为 效率工具 / 开发工具 / 设计资源 / 生活实用)。桌面状态在 `src/stores/desktop.ts`(localStorage 前缀 `utools_desktop-`),窗口组件 `src/components/desktop/AppWindow.vue`,应用视图统一放 `src/views/apps/*.vue`,由注册表里的 `comp` 动态 import。
-- **当前应用数:统一目录 `CATALOG` 90 个(61 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
+- **当前应用数:统一目录 `CATALOG` 95 个(66 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
 - **2026-11-10 起主线任务改为「完整模仿找Tab(https://www.zhaotab.com/)」**,不再只是按批加应用;详见第 8 节。**接手时优先看第 9 节「任务看板」**,那里是最新且唯一的进度事实来源。
 - **第 0 节硬性约定仍然有效**。push 报 `HTTP2 framing layer` 或 443 超时时,直接用 `git -c http.proxy=http://127.0.0.1:7897 push origin main`(本机 Clash 系代理),不要写死进 git config。
 - **必须跑 `npm run build`,不能只跑 type-check**:`vue-tsc --noEmit` 不做模板 codegen,模板编译错误只会在 `vite build` 阶段暴露(详见第 7 节的踩坑)。
@@ -188,10 +188,12 @@
 | P1 | `8c03f48` | 桌面模式设为默认首页;壁纸桌面 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单 + 双击隐藏;`AppIcon.vue` |
 | P2–P4 | `d95f732` | 商店 / 添加 App / 设置三个**整页**(删除旧 drawer)、`desktop-pages.css`、URL 深链接、书签小工具、右键菜单配色修复、图标加载失败回退 |
 | P5-1 | `d785ccc` | 5 个非游戏应用:字节换算、ASCII 码表、HTTP 状态码查询、CURL 格式化、JSON / CSV 转换 |
+| P5-2 | `118e7b2` | 5 个非游戏应用:图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 |
 
-**当前精确状态(已实测):**
-- `CATALOG` = **90** 条(61 桌面应用 + 29 工具),默认桌面 34 个,商店分类计数 `{全部:90, 效率工具:18, 开发工具:23, 设计资源:8, 生活实用:23, 文本工具:3, 图片工具:10, 数据文件:4, 局域网:1}`;排除项泄漏 0。
-- `npm run build` 通过(EXIT=0),仅有既有的 >1MB chunk 警告。
+**当前精确状态(已实测,P5-2 后):**
+- `CATALOG` = **95** 条(66 桌面应用 + 29 工具),默认桌面 34 个,商店卡片 95 张;新分类计数:图片工具 12、设计资源 11、全部 95。排除项泄漏 0。
+- `npm run type-check` 0 错误,`npm run build` 通过(EXIT=0),仅有既有的 >1MB chunk 警告。
+- P5-2 五个应用已逐个在浏览器实测:图片压缩(文件注入 → 完成 → JPEG 省 99%)、图片裁切(1:1 → 16:9 取景框、圆形输出)、随机头像(种子/风格/6 变体)、印章生成器(文字/五角星/手绘感重绘)、代码美化截图(着色/行号/主题/导出无报错)。
 - 四个页面(桌面 / `?p=store` / `?p=settings` / `?p=add-app`)headless Chrome 截图渲染正常。
 - CDP 交互检查 **9/9 通过**:点击开商店、`?p=store` 同步、商店「添加」落盘(35→36)、返回按钮关页并清 query、Dock 开设置、隐藏应用分组渲染、Esc 返回桌面。
 - 本地预览服务 `npx vite preview --port 5188 --host 127.0.0.1`(dev 端口仍是 5199)。
@@ -202,8 +204,8 @@
 
 | 批次 | 应用 | 状态 |
 | --- | --- | --- |
-| P5-2 | 图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 | 未开始 |
-| P5-3 | 浏览器环境检测、WebSocket 在线测试、HTML 编辑器、四象限笔记、防休眠 | 未开始 |
+| P5-2 | 图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 | ✅ 已完成(`118e7b2`) |
+| P5-3 | 浏览器环境检测、WebSocket 在线测试、HTML 编辑器、四象限笔记、防休眠 | 未开始(下一批) |
 | P5-4 | IMEI 校验生成、手速测试、字帖生成器、算术题生成器、端口速查 / 检测 | 未开始 |
 
 > 找Tab 全量 126 个应用名可从 `zhaotab-home.html` 的 `<noscript>` 链接清单提取(原临时文件在 `/tmp`,已把候选名单固化在本文档,不必依赖 `/tmp`)。以上候选均已排除游戏与阅读。
@@ -214,7 +216,7 @@
 - 登录 / 云端同步:按 9.1 的约定不做后端,目前以「仅本地 + JSON 备份」等价实现;若用户改口需要真同步,再单独立项。
 
 **C. 工程债(非主线,可延后)**
-- `README.md` 仍是早期版本(只写 27 个工具,未提桌面模式 / 应用商店 / 90 个应用),对外说明前必须更新。
+- `README.md` 仍是早期版本(只写 27 个工具,未提桌面模式 / 应用商店 / 95 个应用),对外说明前必须更新。
 - 构建大 chunk 警告:vendor(2.55MB)/ vendor-markdown(1.02MB)/ vendor-ui(943KB)/ heic2any(1.35MB),属既有情况。
 - `LanTransfer.vue` 的真实 WebRTC 连通性仍需在真 Chrome + 手机上验证(内置 Review 浏览器无 WebRTC 能力,自动化测不了,见第 6 节)。
 
@@ -234,6 +236,8 @@
 12. **图标名要验**:`@element-plus/icons-vue` 里写字符串名,新增应用前用 `node -e "...'Headset' in require('@element-plus/icons-vue')"` 确认(`headphones` 不存在,应为 `Headset`)。
 13. **Git 推 GitHub 连不上**(443 超时 / `HTTP2 framing layer`):`git -c http.proxy=http://127.0.0.1:7897 push origin main`,不要写死进 git config。
 14. **每次改完立即 commit + push**(第 0 节),不要等用户提醒;提交信息用中文一句话 `feat: …` / `fix: …` / `docs: …`。
+15. **Vue 3 响应式坑:push 进 `ref([])` 的对象,之后必须经响应式数组的代理访问和改**。先 `const it = {...}; items.value.push(it); compress(it)` 后,`it` 是 raw 对象,对它的赋值(即使压缩已完成)不会触发界面更新——表现为 UI 永远停在「压缩中」。修法:push 后取回响应式代理再操作(`const target = items.value.find(x => x.id === it.id)`),或在 `addItem` 里直接 `compress(items.value[items.value.length - 1])`。已修 `ImageCompress.vue`。同理,computed 里读取模块级 `let` 变量(如 `ImageCrop.vue` 的 `imgMeta`)不建立依赖,必须改用 `ref`。
+16. **`<input hidden>` 等元素夹在 `v-if` / `v-else` 之间就是坑 #2 的现场**:P5-2 的 `ImageCrop.vue` 又踩了一次,写模板时先放隐藏 input,再写 `v-if` 块。
 
 ### 9.5 接手后的推荐动作
 

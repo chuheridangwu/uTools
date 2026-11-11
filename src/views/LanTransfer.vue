@@ -459,6 +459,11 @@ function newPeer(): RTCPeerConnection {
     if (p.iceConnectionState === 'failed' && !connected.value) {
       statusText.value = '直连失败:当前网络可能需要 TURN 中继,建议同一 WiFi 或改用「手动配对码」'
       ElMessage.warning('WebRTC 直连失败,当前网络可能无法穿透 NAT')
+      // 立即结束协商,让错误条可见并允许重新发起
+      stopNegotiateWatchdog()
+      negotiating.value = false
+      awaitingPeer.value = null
+      incomingInvite.value = null
     }
   })
   p.addEventListener('connectionstatechange', note)

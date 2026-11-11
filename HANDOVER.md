@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `0f0f56a` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `cb8159f` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,14 +95,16 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`0f0f56a`:**局域网直传信令可靠性修复**(跨网络收不到「接受」)。
-- 公共 MQTT 信令改为 QoS 1 发布/订阅;邀请每 4 秒重发,接受方每 3 秒重发 accept,offer 每 4 秒重发,直到收到 answer / 连接建立。
-- 重复邀请不再被误判拒绝(同设备重发直接回 accept);15 秒内拒绝过的设备不再弹窗。
-- ICE 候选在远端描述未就绪时先缓存,设置完成后补加,避免候选丢失。
-- 新增跨网络说明:公共大厅全球可见、没有 TURN 时对称 NAT 可能连不上;`iceConnectionState=failed` 会给出明确提示。
-- 结果:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.01KB / gzip 9.08KB)。
+`cb8159f`:**局域网直传「接受后无反馈」定位与修复**(先诊断,后改代码)。
+- **诊断结论**:用两个标签页抓组件内部状态实测,双方 `signalingState` 均为 `stable` 且本地/远端 SDP 齐全 → **accept / offer / answer 信令其实已经送达**;但两份 SDP 的 `a=candidate` 数量都是 **0**,`addIceCandidate` 调用次数也是 **0**,`iceConnectionState` 始终为 `new`。所以真实卡点在 **ICE 候选未交换/未应用**,而发起方界面只在 `channel.onopen` 才清除 `awaitingPeer`,于是「ICE 失败」被显示成「没收到接受」。
+- **修复 1(连通性)**:大厅模式在发送 offer / answer 前先 `await waitIceGather(p, 2500)`,把候选写进 SDP,不再单纯依赖单独的 ICE 信令是否送达;`waitIceGather` 增加超时参数(默认 4000,手动配对模式行为不变)。
+- **修复 2(状态可见)**:新增 `negotiating` 状态,接受后发起方从「正在等待 X 接受…」切换为「正在与 X 建立直连… (ice/conn)」;接收方同样显示该面板。
+- **修复 3(超时兜底)**:协商启动 20 秒看门狗(`startNegotiateWatchdog`),超时后 `teardown()` 并展示常驻错误条「直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」」,双方一致;错误条条件从「仅拒绝」放宽到所有未连接且有文案的状态(排除等待/协商中)。
+- **实测(本机双标签页)**:A 点连接 → B 接受 → 双方立即显示「正在与对方建立直连… (new/new)」;20 秒后双方均出现上述错误条,`pending` 面板与 `awaitingPeer` 正确清理,可重新发起。信令链路(邀请/接受/offer/answer)正常。
+- **环境限制**:自动化浏览器中纯 host(不配 STUN)的 `RTCPeerConnection` 也产生 0 个候选(`iceGatheringState=complete`、候选数 0),因此本环境**无法**验证真实 P2P 能否打通;跨网络最终能否连通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络会失败(是否接 TURN 需用户拍板)。
+- 结果:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.81KB / gzip 9.29KB)。
 
-上一次:`5b374ed` + 文档 `d581fcb`/`2a6c357`:**二维码生成支持中心图片与手动生成按钮**。详见第 8 节。
+上一次:`0f0f56a`:**局域网直传信令可靠性修复**(跨网络收不到「接受」)。详见第 8 节。
 - 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
 - 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
 - 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
@@ -312,11 +314,24 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 校验:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.01KB,gzip 9.08KB)。
 - 仍未做:TURN 中继(需要第三方服务 / 自建服务器,按约定先问用户);真正的局域网 mDNS 发现。
 
+### 2026-11-11 · 局域网直传:接受后无反馈的定位与修复(问题修复)
+- 用户复测后仍反馈「接收方点确认,发送方收不到」。这次不再猜信令,直接用两个标签页读组件内部状态:
+  - 双方 `signalingState` 都是 `stable`,本地 / 远端 SDP 均存在 → accept 与 offer/answer **都已送达**;
+  - 但两份 SDP 里 `a=candidate` 都是 **0**,`addIceCandidate` 调用数也是 **0**,`iceConnectionState` 一直 `new` → 真正的卡点是 **ICE 候选没交换/没应用**;
+  - 发起方 UI 只在 `channel.onopen` 清 `awaitingPeer`,所以「ICE 失败」被显示成「还在等对方接受」——这就是用户看到的「收不到接受」。
+- 修复(`src/views/LanTransfer.vue`,commit `cb8159f`):
+  - 大厅模式在 `setLocalDescription` 后 `await waitIceGather(p, 2500)` 再发 offer / answer,让 SDP 自带候选;`waitIceGather` 增加超时参数(默认仍是 4000,手动配对模式不变);
+  - 新增 `negotiating` 状态:接受后发起方文案从「正在等待 X 接受…」切换为「正在与 X 建立直连… (ice/conn)」,接收方显示同样面板;
+  - 新增 20 秒协商看门狗 `startNegotiateWatchdog`:超时 `teardown()`、清 `awaitingPeer` / `incomingInvite`,双端展示常驻错误条「直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」」;
+  - 失败提示条条件从「文案含拒绝」放宽为「未连接、非等待/协商、且 has 文案」,避免超时提示随面板消失。
+- 实测:接受后双端立即切到「正在建立直连… (new/new)」,20 秒后双端出现超时错误条且可重新发起;`npm run type-check` 0 错误,`build` 通过(24.81KB / gzip 9.29KB)。
+- 验证限制:该自动化浏览器里连纯 host(不配 STUN)的 `RTCPeerConnection` 都采集不到候选(`complete` 但 0 个),所以本环境无法验证真实 P2P 连通性;跨网最终能否打通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络必然失败。
+
 ---
 
 ## 9. 下次接手推荐动作
 
 1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
-2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成);C 类剩 LanTransfer 人工验证(Element Plus 按需引入已于 `8984563` 完成)。
+2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成);C 类剩 LanTransfer 真实跨网人工验证,以及「是否接 TURN 中继」需用户拍板(Element Plus 按需引入已于 `8984563` 完成)。
 3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
 4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。

@@ -1,260 +1,224 @@
-# HANDOVER 交接文档
+# HANDOVER 交接文档 · uTools 在线工具箱
 
-项目最后状态(交接时点):`npm run type-check` 0 错误,`npm run build` 通过,dev server(http://localhost:5199)可正常起服并返回首页 200。远程仓库已配置:https://github.com/chuheridangwu/uTools.git(分支 `main`)。
+> 最后更新:**2026-11-11** · `HEAD` = `origin/main` = `d43fae7` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
-## 当前状态(2026-11-10,接手时以本节为准)
+---
 
-> 第 1~6 节记录的是工具站早期(2026-10-29 前后)状态;项目此后新增了「桌面模式 / 应用商店」,以下为最新事实。
+## 0. 30 秒速览
 
-- **双形态**:`src/config/tools.ts` 是有路由的「工具」注册表;`src/config/desktopApps.ts` 是无路由、以浮层窗口打开的「桌面应用」注册表(分类固定为 效率工具 / 开发工具 / 设计资源 / 生活实用)。桌面状态在 `src/stores/desktop.ts`(localStorage 前缀 `utools_desktop-`),窗口组件 `src/components/desktop/AppWindow.vue`,应用视图统一放 `src/views/apps/*.vue`,由注册表里的 `comp` 动态 import。
-- **当前应用数:统一目录 `CATALOG` 105 个(76 桌面应用 + 29 工具)**;桌面默认展示 34 个,其余在应用商店里「添加」。自 2026-11-09 起按「每批 5 个应用」的节奏扩充,每批流程:`npm run type-check` → `npm run build` → commit → push。
-- **2026-11-10 起主线任务改为「完整模仿找Tab(https://www.zhaotab.com/)」**,不再只是按批加应用;详见第 8 节。**接手时优先看第 9 节「任务看板」**,那里是最新且唯一的进度事实来源。
-- **第 0 节硬性约定仍然有效**。push 报 `HTTP2 framing layer` 或 443 超时时,直接用 `git -c http.proxy=http://127.0.0.1:7897 push origin main`(本机 Clash 系代理),不要写死进 git config。
-- **必须跑 `npm run build`,不能只跑 type-check**:`vue-tsc --noEmit` 不做模板 codegen,模板编译错误只会在 `vite build` 阶段暴露(详见第 7 节的踩坑)。
+- **这是什么**:Vue 3 + TypeScript + Vite + Element Plus,「找Tab(https://www.zhaotab.com/)」风格的桌面化在线工具箱。
+- **两个形态**:有路由的「工具」(`config/tools.ts`,29 个,走 `<router-view>`)与无路由的「桌面应用」(`config/desktopApps.ts`,78 条注册、**2 条排除** → 76 个,以浮层 `AppWindow` 打开)。
+- **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**105 条**),商店、桌面、搜索、命令面板全部只认这一份。
+- **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换。
+- **没有后端**:所有数据在 localStorage,「云同步」等价实现为导出 / 导入 JSON。
+- **不做**:游戏中心、3D 魔方、电台随身听、公众号排版;商店分类「游戏」「阅读」也不做(见 `EXCLUDED_KEYS`)。
 
-## 0. 接手后每次必做事项(硬性约定)
+---
 
-- **每次修改完成后,必须自动执行三步,不要等用户提醒:**
-  1. `git add <本次改动的文件>`
-  2. `git commit -m "<描述本次修改的信息>"`(中文一句话,格式如 `feat: …` / `fix: …`)
-  3. `git push origin main`
-- 提交前用 `npm run type-check`(即 `vue-tsc --noEmit`)确认 0 错误再提交。
-- **不要**配置 fswatch/watchexec 等文件监听自动提交机制,用户已明确拒绝(2026-10-29);提交动作由 AI 会话在每次修改后手动执行。
+## 1. 硬性约定(每次改动都必须做,不要等用户提醒)
 
-## 1. 完成清单
+1. `npm run type-check` → **0 错误**;
+2. `npm run build` → **必须跑**,`vue-tsc` 不做模板 codegen,模板编译崩溃只在 build 阶段暴露;
+3. `git add` → `git commit -m "<中文一句话>"`(`feat: …` / `fix: …` / `docs: …`)→ `git push origin main`;
+4. **汇报 commit hash**(用户明确要求每次显式给出)。
 
-- 基础设施:package.json、vite.config.ts、tsconfig.json、index.html、src/env.d.ts、public/favicon.svg。
-- 核心:`src/types/tool.ts`、`src/config/tools.ts`(27 工具注册表)、`src/router/index.ts`(import.meta.glob 动态映射)、`src/stores/app.ts`、`src/styles/index.css`、`src/main.ts`、`src/App.vue`。
-- 组件:Sidebar、CommandPalette(⌘/Ctrl+K)、ToolCard、ToolPage、JsonTreeNode。
-- utils:`common.ts`(copyText/downloadBlob/downloadText/formatSize=**formatBytes 别名**/baseName/pad2/toNumber/storage)、`image.ts`(loadImage/calcTargetSize/drawImageTo/canvasToBlob/renameWithExt)。
-- 视图:27 个工具 + Home 全部完成并通过类型检查。
-- **本地媒体浏览器 `LocalMedia.vue`**(key `local-media`,data 分类):移植 `../local_video.html`(父目录同名文件)并扩展照片支持。
-  - 照片:JPEG/JPG/PNG/WebP/HEIC/HEIF;HEIC/HEIF 用 `heic2any` 前端转码(动态 import,独立 chunk 约 1.35MB,仅遇到 HEIC 时加载)。
-  - 视频:canvas 截帧缩略图 + 连续播放列表(范围=当前目录及子目录)+ 播完自动下一集。
-  - 交互:面包屑导航、当前目录搜索、类型筛选/排序、照片大图(←/→ 切换、Esc 关闭)、全屏播放器。
-  - 所有文件仅通过 Object URL 在内存访问,卸载时统一 revoke,不上传。
-  - **已踩坑(务必注意)**:`onPick` 中必须先把 `input.files` 快照成数组再清空 `input.value`,否则 Blink 会一并清空该 FileList,导致读不到任何文件(表现为“选择文件夹后什么都不显示”)。
-- **视频播放列表显示/隐藏按钮**(2026-10-29,commit `05949e8`):
-  - `LocalMedia.vue` 视频播放器底栏新增「隐藏列表 / 显示列表」切换按钮,状态 `showPlaylist = ref(true)`。
-  - 播放列表 `<aside>` 用 `v-show`(非 `v-if`)切换,不重建 DOM、不丢缩略图状态;隐藏后 `.video-wrap` 因 `flex: 1` 自动占满全宽。
-  - 图标 `Fold` / `Expand`(从 `@element-plus/icons-vue` 引入);状态跨自动连播保留,不随 `playIndex` 重置。
-- **音频播放器**(2026-10-29,同日会话):
-  - `LocalMedia.vue` 新增 `AUDIO_EXTS = ['mp3', 'm4a']`,`MediaItem.kind` 扩展为 `'image' | 'video' | 'audio'`(视频为 `video`)。
-  - 独立音频播放器 overlay(不与视频复用):`openAudio/playAudioIndex/nextAudio/closeAudio`,状态 `audioOpen/audioIndex/audioPlaylist/audioUrl/audioError/showAudioPlaylist`;支持自动连播下一首、Esc 关闭、隐藏/显示列表、下载。
-  - 交互规则:`kindFilter` 加「音频」计数筛选;按类型排序优先级 照片→音频→视频(`kindRank`);打开音频会 `closePlayer()`、打开视频会 `closeAudio()`、`onPick` 两者都关;音频 `prepareThumb` 直接标记 `done` 无缩略图(卡片与列表用 `Headset` 图标占位)。
-  - 音频播放列表范围与视频一致:当前目录及子目录(`audiosUnder`)。
-- **已移除功能**:便签、书签管理、程序员计算器三个工具(含视图、注册表条目、life 分类),以及“最近使用”特性(store recents/visitTool、侧边栏与首页区块、路由 afterEach 记录)。
+其他长期约定:
+- **不要**装 fswatch / watchexec / launchd 之类的自动提交机制(用户 2026-10-29 明确拒绝)。
+- **不要**自作主张接重型库、第三方服务或 ML 模型;这类项先问用户(第 6 节 B 类)。
+- 「手机在线收听有声书」需求**已放弃**,不要重提。
 
-## 2. 本次会话关键修复(供回溯)
+推送相关(本机网络常抖动):
+```bash
+# 优先直推;超时/HTTP2 报错时重试,必要时显式 HTTP/1.1
+for i in 1 2 3 4 5 6; do
+  git -c http.version=HTTP/1.1 push origin main && break
+  sleep 8
+done
+git rev-parse HEAD origin/main   # 两者相等才算推送成功
+```
+> 本机 Clash 代理 `127.0.0.1:7897` **经常没有监听**,此时 `git -c http.proxy=…` 会直接失败,直推 + 重试才是可用路径。**永远不要把 proxy 写进 git config**。
 
-- `vite.config.ts` 首行残留中文说明注释(带 `:$` 特殊字符)导致 TS1127 → 整行删除。
-- `ApiTester.vue` / `CsvViewer.vue`:两条 `const` 语句合并一行(`('GET')const url`)→ 拆行。
-- `CodeGenerator.vue`:模板内联箭头函数中嵌双引号转义导致语法错 → 抽出 `fillSample()`。
-- 11 个视图的 `el-upload :on-change` 内联箭头在模板里不可写 TS 注解 → 统一抽为 `const onUploadChange = (f: UploadFile) => ...`,并 `import type { UploadFile } from 'element-plus'`。
-- `downloadBlob` 参数改为 `Blob | string`(兼容);调用点若参数顺序颠倒(文件名在前)已逐个换回 `(blob, filename)`。
-- `common.ts` 新增 `export const formatBytes = formatSize`。
-- `BookmarkManager.vue` / `ImageBatchProcess.vue` / `ImageConverter.vue`:模板中不能直接用全局 `URL` 构造器(会被解析为组件实例属性)→ 新增脚本内 helper(`hostOf` / `objUrlOf`)。
-- `CronParser.vue`:cron-parser v5 无 `parseExpression` 命名导出 → 用 `CronExpressionParser.parse(expr, { currentDate })`;`CronDate` 无 `.format()` → `dayjs(it.next().toDate()).format(...)`。
-- `DiffTool.vue`:`buildAligned(changes: Change[])` 参数遮蔽同名 ref,内部误用 `changes.value` → 去掉 `.value`。
-- `ExifViewer.vue`:exifr options 去掉 `ifd0: true`(FormatOptions 类型不接受 boolean)。
-- `GifMaker.vue`:frames 数据类型定为 `Uint8Array`(writeFrame 参数要求);gifenc 模块在 `env.d.ts` 手写 declare。
-- `JsonTreeNode.vue`:`props.depth` 可选 → `(props.depth ?? 0) < 1`。
-- `StickyNotes.vue` / `BookmarkManager.vue`:弹窗标题表达式中 `editing.id` 空值告警 → `editing?.id`。
+---
 
-## 3. 历史 bug(更早会话)
+## 2. 快速开始
 
-- JsonGenerator 的 strsJoin 问题已不存在(grep 无匹配,视为已修复)。
-- Timestamp.vue 的 `funciton` 拼写、模板 filter `{{ now / 1000 | 0 }}`、按钮回调错误变量等已在早期修复并通过类型检查。
-- marked v18 的 `setOptions({highlight})` 已废弃 → 用 `marked.use({ renderer: { code(token) { const { text, lang } = token } } })`。
+```bash
+npm install
+npm run dev        # http://localhost:5199(端口固定,server.host: true)
+npm run build      # type-check + 生产构建
+npm run type-check # 仅 vue-tsc --noEmit
+npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
+```
 
-## 4. 版本固定(依赖 API 事实)
+页面入口:`/`(桌面) · `/?p=store` · `/?p=settings` · `/?p=add-app` · `/?add=<网址>&name=<标题>`(书签小工具)。
 
-| 依赖 | 要点 |
+---
+
+## 3. 当前状态(实测事实,2026-11-11)
+
+### 3.1 数量与分类
+
+| 指标 | 数值 |
 | --- | --- |
-| cron-parser ^5.10.2 | 仅 `CronExpressionParser.parse`;`next()` 返回 CronDate,用 `.toDate()` |
-| cronstrue ^3.38.0 | `import cronstrue from 'cronstrue/i18n'` + `{ locale: 'zh_CN' }` |
-| marked ^18.1.1 | renderer.code 收到 token 对象 |
-| gifenc ^1.0.3 | `GIFEncoder() / quantize / applyPalette`;`writeFrame(Uint8Array, w, h, { palette, delay })` |
-| element-plus ^2.14.7 | dark css-vars 已在 styles/index.css 引入 |
-| exifr ^7.1.3 | GPS 在 `data.latitude/longitude` |
-| heic2any ^0.0.4 | `heic2any({ blob, toType: 'image/jpeg', quality })` 返回 `Blob \| Blob[]`;仅 Chromium/Firefox 可用(Safari 可原生解码) |
+| `CATALOG` 总数 | **105** |
+| 桌面应用 / 路由工具 | 76 / 29(注册表 78 条,排除电台随身听、公众号排版) |
+| 默认桌面图标 | 34 个(其余在商店「添加」) |
+| 商店卡片 | 105 张 |
 
-## 5. 待办 / 注意事项
+分类计数(浏览器实测,与 README 一致):
+`全部 105 · 效率工具 21 · 开发工具 28 · 设计资源 12 · 生活实用 24 · 文本工具 3 · 图片工具 12 · 数据文件 4 · 局域网 1`
+排除项泄漏 **0**。
 
-- ~~GitHub 推送未执行~~ **已完成**(2026-10-29):remote `origin` = https://github.com/chuheridangwu/uTools.git,推送用 `git push origin main`(HTTPS 凭据已可用)。
-- 构建警告:vendor-ui(942 KB)与 vendor(1.9 MB,含 jimp)超过 1 MB 提示;如需优化可对 jimp 相关视图按需动态 import 或降级。
-- 快捷键:⌘/Ctrl + K 命令面板;dark 模式、收藏持久化(localStorage 前缀 `utools_`)。
-- 翻译:MyMemory 不支持 auto 语种,当前用 CJK 占比启发式检测;单次请求 ≤500 字符。
-- EyeDropper(屏幕取色)仅 Chromium 系浏览器支持,ColorTool 已做能力判断。
-- dev 端口固定 5199(`server.host: true`)。
+### 3.2 构建 / 校验
 
-## 6. 会话记录(2026-10-29)
+- `npm run type-check` → 0 错误。
+- `npm run build` → 通过(EXIT=0)。仅剩既有的 >1MB chunk 提示:`vendor`(2.55MB,含 jimp)、`vendor-markdown`(1.02MB)、`vendor-ui`(943KB)、`heic2any`(1.35MB)。属既有情况,非回归。
 
-**已做:**
-- **本地漫画阅读器 `LocalManga.vue`**(key `local-manga`,data 分类,`manga.html` 移植):
-  - 交互与原版一致:选择含「话」子文件夹的根目录 → 纵向连续翻阅图片、左右浮动按钮/键盘 ←→ 切话、字段为一话一文件夹。
-  - 与原版差异(站内一致性考虑):(1) 用 `input[webkitdirectory]` 取代 `showDirectoryPicker`(Safari 不支持后者);(2) 排序统一 `naturalCompare`;(3) HEIC/HEIF 单页用 heic2any 本地转码(动态 import + 信号量限制并发 2);(4) 新增章节 `el-select` 直达跳转;(5) 切话时 revoke 上一话全部 Object URL。
-  - 章节定义:根目录一级子文件夹;子文件夹内图片含更深层级(`startsWith` 匹配);根目录直接散落的图片不入话(与原版一致)。
-  - 验证:`vue-tsc` 0 错误、build 通过、dev server http://localhost:5199/local-manga 渲染正常(浏览器实测)。
-- **局域网文件直传 `LanTransfer.vue`**(key `lan-transfer`,dev 分类,依赖新增 `mqtt@^5.js`)(2026-11-09):
-  - UX 对标找Tab「局域网文件共享」(用户提供截图):随机动物昵称(重名自动加序号)、在线设备大厅、点连接 → 对方 ElMessageBox 接受/拒绝(拒绝时发起端提示)、接受后进入双面板(发送:点击/拖拽选择;接收:进度+保存),双方可同时收发,另有文本互传。
-  - 架构:在线名单 + 配对信令(invite/accept/reject/offer/answer/ice)走公共 MQTT `wss://broker.emqx.io:8084/mqtt`(主题 `utools/lanx/lobby/v1` 与 `utools/lanx/sig/v1/<id>`),**文件数据本体走 WebRTC DataChannel 点对点不经服务器**;MQTT 动态 import(lazy chunk)。
-  - 手动配对兜底(切换按钮):复制粘贴压缩 SDP 码(CompressionStream deflate-raw 前缀 LT1/LT0)+ 二维码,用于 MQTT 不可达场景;两套模式复用同一传输协议(meta→64KB chunks→done/ack,bufferedAmount 背压 4MB/2MB)。
-  - **重要环境事实(踩坑)**:OpenCode 内置 Review 浏览器**没有可用的 WebRTC 能力**(本机最小化环回测试中 localDescription 无任何 candidate,ICE 恒为 new)——自动化测不了真实连接,只有 UI/信令流程可测(已测:大厅互见、邀请弹窗、接受信令)。**真实连通性必须由用户在真 Chrome/手机上验证;写进文档避免下次会话误判为代码 bug 而浪费时间**。
-  - README 的「纯前端工具」约束:lan-transfer 使用了第三方公共 MQTT 中继用于握手,文件内容不走中继——desc 里已注明。
-  - 2026-11-09 补充:大厅顶部新增「本页网址二维码」(`location.origin + pathname`,`renderQr` 生成),手机扫码直接打开本页;本地 dev 时指向 localhost,部署后自动为正式域名。
-  - 2026-11-09 补充:新增独立分类 `lan`「局域网」(`ToolCategoryKey` 扩展 + CATEGORIES 尾部),lan-transfer 从 dev 迁入;分类是单一数据源,首页 tab/侧边栏/命令面板自动生效。**用户再次强调:每次修改后必须主动 commit + push(见第 0 节)**。
-- 视频播放器:新增播放列表显示/隐藏按钮(见完成清单对应条目),`vue-tsc` 0 错误后已提交推送(commit `05949e8`)。
-- 配置远程仓库 `origin`(GitHub HTTPS),推送链路已验证可用。
-- 起草并否决了 fswatch + launchd 自动提交方案:`brew install fswatch` 执行中途被用户打断,**未安装成功、未写入任何 LaunchAgent**;如后续发现 `~/Library/LaunchAgents/` 有残留 plist 应删除。
+### 3.3 最近一次交付(B 类,用户选定项)
 
-**踩过的坑:**
-- **文件名排序与 Finder 不一致**:`localeCompare(x, 'zh-Hans-CN')` 默认数字按字典序(1,10,100,2),Folders 里的剧集如 `10 - …`、`100 - …` 全排在 "1" 开头。已在 `LocalMedia.vue` 增加 `naturalCompare()`(`{ numeric: true }`),替换全部 5 处比较(子文件夹、网格名称排序、视频/音频播放列表路径排序)——**以后新增排序一律用 `naturalCompare`,不要再直接写 localeCompare**。
-- 注意工具使用细节:编辑之前未在本次会话读过的文件时,`find/replace` 必须基于精确原文,或直接 `read` 后再改,否则会匹配失败。
-- **git 推 GitHub 连不上(端口 443 超时 / HTTP2 framing layer 错误)**:本机走系统代理(Clash 系,`127.0.0.1:7897`),但 git CLI 不读 macOS 系统代理设置。解决:`git -c http.proxy=http://127.0.0.1:7897 push origin main`。以后凡 push 失败先试这个;不要把 proxy 写死进 git config(代理软件没开会反而断链)。
+`42898e2` + 文档 `d43fae7`:**商店与桌面的最近打开、搜索分组、网格 / 列表视图切换**。
+- 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
+- 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
+- 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
 
-**用户决策(尚未做):**
-- 用户决定**不**部署任何自动提交的永久机制,改为「AI 每次修改后手动 commit+push」,约定见第 0 节。
-- 「手机在线收听有声书」需求**已放弃**(2026-10-29,当晚讨论过 R2 上传 / 转码压缩 / Audiobookshelf 自托管等方案,均未实施,本地媒体工具保持纯前端内存播放,不再讨论)。
+---
 
-## 7. 会话记录(2026-11-10)
+## 4. 架构与文件地图
 
-**已做:**
-- 接手时工作区有 5 个「已写完但未提交」的应用(九宫格切图、文本加密、AA 分账、生物钟、图片转 Base64)及注册表改动。type-check 通过但 build 失败,修复两处模板问题后构建通过,提交 `e947574` 并推送。
-- 按既有节奏继续新增第二批 5 个应用,提交 `2783321` 并推送:
-  - `Metronome.vue` 节拍器:Web Audio lookahead 调度器(提前 120ms 排音)、拍号 / 八分~十六分细分 / 小节重音 / 音色 / 音量 / Tap Tempo,卸载时关闭 AudioContext。
-  - `UrlParser.vue` URL 参数解析:拆解 query(自动解码、保留同名多值)、复制查询串或 JSON、一键载入构建器;构建模式可编辑键值对并切换空格编码为 `+` 或 `%20`。
-  - `JwtDecoder.vue` JWT 解析:Base64URL 解码 Header/Payload、iat/nbf/exp 时间换算与过期状态、示例 Token;明确标注「只解码不校验签名」。
-  - `TextLineTools.vue` 文本行处理:修剪 / 去空行 / 过滤 / 去重 / 大小写 / 自然排序 / 反转 / 编号 / 前后缀的固定顺序流水线,实时预览、导出 txt。
-  - `SvgPattern.vue` SVG 图案生成器:圆点 / 网格 / 斜线 / 棋盘 / 波浪五种 `<pattern>` 平铺,配色与尺寸可调,复制 SVG / CSS 背景或下载 .svg。
-- 五个应用均为纯前端、无新增依赖,构建后各自产出独立 lazy chunk。
+```
+src/
+  main.ts / App.vue              # 入口;桌面模式下 App.vue 不渲染 <router-view>
+  config/
+    tools.ts                     # 29 个「有路由的工具」注册表
+    desktopApps.ts               # 78 条「浮层应用」注册表(2 条被排除)
+    appCatalog.ts                # ★ 唯一目录源:CATALOG / CATALOG_MAP / STORE_CATEGORIES /
+                                 #   DEFAULT_DESKTOP_IDS / RELEASE_BATCHES / searchCatalog
+    wallpapers.ts                # 6 组渐变 + 5 张内联 SVG 壁纸(无外链)
+  stores/
+    app.ts                       # 深色模式 + 工具收藏(localStorage 前缀 utools_)
+    desktop.ts                   # ★ 桌面状态 v2:单键 utools_desktop-state
+  components/desktop/
+    DesktopHome.vue              # 桌面:壁纸/系统栏/时钟/搜索/图标网格/Dock/右键菜单
+    StorePage.vue                # 应用商店整页(分类 + 搜索分组 + 最近 + 视图切换)
+    SettingsPage.vue             # 设置整页(外观/隐藏应用/布局/备份)
+    AddAppPage.vue               # 手动添加网站
+    AppWindow.vue                # 浮层窗口(teleport to body)
+    AppIcon.vue                  # 统一图标:favicon → emoji → EP 图标 → 首字
+  router/index.ts                # import.meta.glob 动态路由 + ?p= query 深链接
+  styles/desktop-pages.css       # 整页共用样式(--zt-* 变量,亮/暗两套)
+  views/apps/*.vue               # 桌面应用视图
+  views/*.vue                    # 29 个路由工具视图 + Home
+```
 
-**踩坑(重要,务必记住):**
-- **Vue 模板里 `v-if` 和 `<template v-else>` 之间不能夹其他元素**。若在两者之间插入 `<input type="file" hidden>` 之类的元素,`@vue/compiler-core` codegen 阶段会崩 `Cannot read properties of undefined (reading 'type')` / `Codegen node is missing for element/if/for node`;而 `vue-tsc --noEmit` 仍是 0 错误,只有 `vite build` 会失败。修法:把中间元素移到 `v-if` 之前,让 `v-else` 紧邻 `v-if`(中间只留 HTML 注释是安全的)。本次已修 `ImageToBase64.vue` 与 `NineGridCut.vue`。
-- 快速定位同类问题:用 `node -e` 调 `@vue/compiler-sfc` 的 `compileTemplate()` 批量扫 `src/views/apps/*.vue`,几秒即可找出所有编译崩溃的文件。
+关键设计(改动前必读):
+- **目录是静态的,状态只存「用户选了哪些 key」**。所以新增应用后,老用户刷新就能在商店看到,不会出现一次性快照永不过期的问题。
+- **目录三态**:已添加 `desktopIds` / 已隐藏 `hiddenIds`(可恢复)/ 未添加(仅商店可见)。
+- **`items` 由目录实时派生**,不要在 store 里缓存应用元数据。
+- 深链接只用 vue-router 的 `query`,**不新增路由记录**(桌面模式下没有 `<router-view>`,路径式路由会 No match)。
 
-**待办 / 注意:**
-- `README.md` 仍是早期版本(只写 27 个工具、未提桌面模式与应用商店),需要对外说明时再更新。
-- 构建仍有 vendor(2.2MB)/ vendor-markdown(1.0MB)/ vendor-ui(943KB)/ heic2any(1.35MB)超 1MB 的提示,属既有情况,非本次引入。
-- 桌面模式图标名来自 `@element-plus/icons-vue`,注册表里写字符串名;新增应用前确认图标名在包内存在(如 `headphones` 不存在,应为 `Headset`)。
+### 4.1 新增一个应用的 SOP(照做即可)
 
-## 8. 会话记录(2026-11-10,模仿找Tab 主线)
+1. 写 `src/views/apps/YourApp.vue`(纯前端优先,不引新依赖);
+2. `config/desktopApps.ts` 注册表追加条目(`key/name/short/desc/icon/accent/category/comp`);
+3. `config/appCatalog.ts` 的 `RELEASE_BATCHES` **追加一批 key 数组**——漏了这步 `isNew`/`releasedAt` 为 0,「最新上架」看不到;
+4. 若用新分类,同时扩展 `desktopApps.ts` 的 `category` 联合类型**和** `appCatalog.ts` 的 `APP_CATEGORY_MAP`;
+5. `npm run type-check` → `npm run build` → 浏览器实测(打开商店 → 找到卡片 → 打开 → 真实操作一遍);
+6. commit + push,并同步本文件第 3 节的数量与第 8 节时间线。
 
-**用户目标与范围约定(务必遵守):**
-- 目标不是继续按批加应用,而是**完整模仿 `https://www.zhaotab.com/`**:主题、应用商店里的各种应用、「把商店应用添加到桌面」、设置里的功能;游戏除外。
-- **明确不做**:`电台随身听`、`游戏中心`、`3D魔方`、`公众号排版`;商店分类 `游戏`、`阅读` 也不做。
-- 找Tab 没有、而 uTools 已有的功能/分类**一律保留**(`文本工具`/`图片工具`/`数据文件`/`局域网` 等),只是样式按找Tab 做;若某功能只有 uTools 有,按 uTools 自己的方式实现。
-- 样式尽量照着找Tab 做,内页功能样式也一样;云端同步以「仅本地 + 导出/导入 JSON 备份」等价实现,**不接后端**(交接时与用户确认的两条工作假设:桌面模式设为默认首页、账户/云同步做本地等价)。
+---
 
-**架构变化:**
-- `src/config/appCatalog.ts`:唯一目录源,合并 `tools.ts` + `desktopApps.ts`,过滤排除项,生成分类/标签/别名/拼音检索(`pinyin-pro`)/新旧与热度;`CATALOG`、`CATALOG_MAP`、`DEFAULT_DESKTOP_IDS`、`STORE_CATEGORIES`、`ALL_TAGS`、`searchCatalog()` 等都从这里出。新应用**只改两个注册表**,不要另建目录。
-- `src/config/wallpapers.ts`:6 组渐变 + 5 张内联 SVG 风景壁纸(无外链 CDN),`WALLPAPER_GROUPS` 供设置页分组展示。
-- `src/stores/desktop.ts`:状态 v2,单个 localStorage key `utools_desktop-state`;只存用户选择(`desktopIds`/`hiddenIds`/`dockIds`/`customSites`/偏好),`items` 由目录实时派生;带 v1 多 key 迁移、隐藏代替删除、自定义网站增删改、导入导出备份、本地存储用量。
-- 内页改为**整页**(不再是 drawer):`StorePage.vue` / `AddAppPage.vue` / `SettingsPage.vue`,共用 `src/styles/desktop-pages.css`(在 `main.ts` 引入);旧的 `StoreDrawer.vue` / `SettingsDrawer.vue` 已删除。
-- 面板与 URL 同步:`?p=store` / `?p=settings` / `?p=add-app`,书签小工具 `?add=<网址>&name=<标题>`;用 vue-router `query`(不新增路由记录,避免和工具路由冲突),浏览器前进/后退可切换,Esc 返回桌面。
-- `AppIcon.vue` 统一渲染圆角图标:外链图标 → emoji → Element Plus 图标 → 名称首字;外链加载失败会回退,不会留空白图标。
+## 5. 已完成功能清单
 
-**已完成批次:** P0 `e5648b3`(目录 + 状态 v2)、P1 `8c03f48`(桌面主题/默认首页)、P2–P4 `d95f732`(商店/添加 App/设置整页 + 深链接 + 右键菜单配色修复)。
-**验证方式:** `npm run build` 通过;headless Chrome 截图四个页面;CDP 交互检查 9/9 通过(点击开商店、URL 同步、添加应用落盘、返回按钮、Dock 开设置、隐藏应用分组、Esc 返回)。
+**桌面(默认首页)**:壁纸(渐变 / 内联 SVG)、顶部系统栏、时钟、中央搜索(拼音,`pinyin-pro`)、圆角图标网格、分页、底部 Dock(4 个系统入口 + 用户固定应用)、右键菜单、双击空白隐藏图标、图标尺寸 / 风格 / 玻璃质感 / 显示标签等偏好、聚焦显示「最近打开」。
 
-> 本节为当日会话的过程记录。**后续进度、剩余任务与踩坑清单一律以第 9 节「任务看板」为准**,不要在这里追加待办。
+**应用商店(整页)**:105 个应用、8 个分类计数、最新上架 / 最受欢迎 / 全部应用、拼音与别名搜索、搜索分组与结果统计、最近打开横条、网格 / 列表切换(持久化)、「添加 / 已添加」与「打开」、手动添加任意网站。
 
-## 9. 任务看板(2026-11-10 14:30 更新 · 接手时先看这一节)
+**设置(整页)**:外观与壁纸、隐藏应用管理(可恢复)、桌面布局与交互偏好、自定义站点、本地数据用量、导出 / 导入 JSON 备份。
 
-### 9.1 要完成的任务(总目标与验收口径)
+**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。
 
-用户原话的意图:**完整模仿 `https://www.zhaotab.com/`**,不只是换主题,而是包含
-(1) 找Tab 式主题(壁纸桌面、圆角图标、顶部系统栏、中央搜索、底部 Dock、毛玻璃);
-(2) 应用商店里的各种应用;
-(3) 「把商店应用添加到桌面」的能力;
-(4) 设置里的各项功能;
-(5) 内页功能与样式也尽量照着做。游戏除外。
+**105 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
-**用户明确的范围约定(不要擅自改动):**
-- **不做**:`电台随身听`、`游戏中心`、`3D魔方`、`公众号排版`;商店分类 `游戏`、`阅读` 也不做。
-- 找Tab 没有、uTools 已有的功能/分类**一律保留**(`文本工具`/`图片工具`/`数据文件`/`局域网` 等),只是样式向找Tab 靠拢。
-- 若某功能只有 uTools 有、找Tab 没有,按 uTools 自己的方式实现。
-- 两条已确认的工作假设:**桌面模式设为默认首页**;**账户/云同步以「仅本地 + 导出/导入 JSON」等价实现,不接后端**。
+---
 
-**验收口径:** `npm run type-check` 0 错误 + `npm run build` 通过 + 每个功能在浏览器里可操作 + 每次改动 commit/push(第 0 节硬性约定)。
+## 6. 未完成项
 
-### 9.2 已完成(全部已 push 到 `origin/main`)
+### A. 以前的主线:按找Tab 补齐应用 —— ✅ 已结束
+P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖。
 
-| 阶段 | commit | 内容 |
-| --- | --- | --- |
-| 前置 | `e947574` / `2783321` | 两批共 10 个桌面应用(主线转向前按旧节奏做的,保留) |
-| 前置 | `05c58fc` | 交接文档补桌面模式现状与模板踩坑 |
-| P0 | `e5648b3` | `appCatalog.ts` 统一目录(85 条)、`wallpapers.ts` 壁纸预设、`desktop.ts` 状态 v2(版本迁移/隐藏/自定义站点/备份) |
-| P1 | `8c03f48` | 桌面模式设为默认首页;壁纸桌面 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单 + 双击隐藏;`AppIcon.vue` |
-| P2–P4 | `d95f732` | 商店 / 添加 App / 设置三个**整页**(删除旧 drawer)、`desktop-pages.css`、URL 深链接、书签小工具、右键菜单配色修复、图标加载失败回退 |
-| P5-1 | `d785ccc` | 5 个非游戏应用:字节换算、ASCII 码表、HTTP 状态码查询、CURL 格式化、JSON / CSV 转换 |
-| P5-2 | `118e7b2` | 5 个非游戏应用:图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 |
-| P5-3 | `8d00ff1` | 5 个非游戏应用:浏览器环境检测、WebSocket 在线测试、HTML 编辑器、四象限笔记、防休眠 |
-| P5-4 | `a229bc0` | 5 个非游戏应用:IMEI 校验生成、手速测试、字帖生成器、算术题生成器、端口速查 |
+### B. 需要用户拍板才能做的(不要擅自开工)
+| 项 | 说明 |
+| --- | --- |
+| 图片去背景 | 需 ML 模型或第三方 API,体积 / 隐私成本高 |
+| Whois 查询 | 需公开 API(如 `rdap.org`),不保证全部域名可用 |
+| PDF 裁剪 | 可引入 `pdf-lib` 纯前端做,约 +150KB |
+| 在线解压 | 可引入 `fflate` 做 zip,rar/7z 不支持 |
+| 随机图片 | 需外链图源,稳定性不可控 |
+| 完整 SVG 编辑器 | 已有「SVG 图案生成器」近似覆盖 |
+| 浏览器插件 | 目前只有书签小工具(`?add=`) |
+| 真云同步 | 与 9.1 约定冲突,除非用户改口 |
 
-**当前精确状态(已实测,P5 批次全部完成后):**
-- `CATALOG` = **105** 条(76 桌面应用 + 29 工具),默认桌面 34 个,商店卡片 105 张;分类计数 `{全部:105, 效率工具:21, 开发工具:28, 设计资源:12, 生活实用:24, 文本工具:3, 图片工具:12, 数据文件:4, 局域网:1}`;排除项泄漏 0。
-- `npm run type-check` 0 错误,`npm run build` 通过(EXIT=0),仅有既有的 >1MB chunk 警告。
-- P5-2 五个应用已逐个在浏览器实测:图片压缩(文件注入 → 完成 → JPEG 省 99%)、图片裁切(1:1 → 16:9 取景框、圆形输出)、随机头像(种子/风格/6 变体)、印章生成器(文字/五角星/手绘感重绘)、代码美化截图(着色/行号/主题/导出无报错)。
-- P5-3 五个应用已实测:环境检测(5 卡 21 项无空值)、WebSocket(连接 → 回显 → 261ms 延迟)、HTML 编辑器(同源沙箱实时预览、脚本可交互)、四象限笔记(增删/完成/跨象限移动/持久化)、防休眠(唤醒锁被拒后音频回退可用、计时/解除正常)。
-- P5-4 五个应用已实测:IMEI(合法/非法/位数不足提示正确、批量生成全部通过卢恩校验)、手速测试(5 秒 12 次 → 2.4 CPS、最好成绩落盘)、字帖(文字/格子/描红切换重绘、PNG 导出)、算术题(20 题答案全对、隐藏/显示、分栏、复制)、端口速查(45 条 / 8 分类 / 搜索 / 18 条风险提示)。
-- 四个页面(桌面 / `?p=store` / `?p=settings` / `?p=add-app`)headless Chrome 截图渲染正常。
-- CDP 交互检查 **9/9 通过**:点击开商店、`?p=store` 同步、商店「添加」落盘(35→36)、返回按钮关页并清 query、Dock 开设置、隐藏应用分组渲染、Esc 返回桌面。
-- 本地预览服务 `npx vite preview --port 5188 --host 127.0.0.1`(dev 端口仍是 5199)。
+### C. 工程债(可延后)
+- 大 chunk 警告(见 3.2),需要时再对 jimp / heic2any 做更细的按需拆分。
+- `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。
 
-### 9.3 未完成(按优先级)
+---
 
-**A. P5 剩余批次 —— 补齐找Tab 的非游戏应用,每批 5 个,逐批 build + commit + push**
+## 7. 踩坑清单(按「下次最容易再踩」排序)
 
-| 批次 | 应用 | 状态 |
-| --- | --- | --- |
-| P5-2 | 图片压缩、图片裁切、随机头像生成、印章生成器、代码美化截图 | ✅ 已完成(`118e7b2`) |
-| P5-3 | 浏览器环境检测、WebSocket 在线测试、HTML 编辑器、四象限笔记、防休眠 | ✅ 已完成(`8d00ff1`) |
-| P5-4 | IMEI 校验生成、手速测试、字帖生成器、算术题生成器、端口速查 / 检测 | ✅ 已完成(`a229bc0`) |
+1. **必须跑 `npm run build`**,只跑 type-check 会漏掉模板 codegen 崩溃。批量定位:`node -e` 调 `@vue/compiler-sfc` 的 `compileTemplate()` 扫 `src/views/apps/*.vue`。
+2. **`v-if` 与 `<template v-else>` 之间不能夹任何元素**(连 `<input hidden>` 也不行),否则 codegen 报 `Cannot read properties of undefined (reading 'type')` / `Codegen node is missing`。修法:把中间元素移到 `v-if` 之前;中间只留 HTML 注释是安全的。已修 `ImageToBase64`、`NineGridCut`、`ImageCrop`(这个坑已经踩过三次)。
+3. **新增应用必须改两处 + 追加 `RELEASE_BATCHES`**(见 4.1)。`CATALOG` 由注册表派生,**不要另建目录**。
+4. **`category` 是字面量联合类型**。用 `数据文件`/`图片工具`/`文本工具`/`局域网` 时,`desktopApps.ts` 的联合类型与 `appCatalog.ts` 的 `APP_CATEGORY_MAP` **都要加**。
+5. **Vue 3 响应式**:push 进 `ref([])` 的 raw 对象后续赋值不触发更新(表现为永远「压缩中」)→ 必须取回响应式代理再改;computed 读模块级 `let` 变量不建立依赖 → 改 `ref`。已修 `ImageCompress.vue`、`ImageCrop.vue`。
+6. **`teleport to="body"` 拿不到 `.desktop` 上的 CSS 变量**:右键菜单 `.ctx` 必须在自身定义 `--fg` / `--glass-bg` / `--shadow` 并在 `html.dark` 覆盖。
+7. **深链接只能用 `query` + `router.replace({query})`**,不要 `window.history.replaceState`(会让 router 状态与地址栏脱钩),也不要新增路径式路由。
+8. **`AppIcon.vue` 外链 favicon 会失效**:用 `imgFailed` + `watch(iconUrl)` 回退到 emoji → EP 图标 → 首字;`AddAppPage` 会 `new Image()` 预检 URL。
+9. **图标名要验**:注册表里写的是字符串名,新增前 `node -e "...'X' in require('@element-plus/icons-vue')"`(`headphones` 不存在 → `Headset`;没有 `Left` → 用 `ArrowLeft`)。
+10. **`el-radio-group` 的 `@change` 显式标注类型**:模板内联 `(v) => …` 会让参数隐式 `any` 过不了 type-check → 抽成 `(v: string | number | boolean)` 的命名函数。
+11. **`el-select allow-create` 的自定义值要归一化**(字节换算里 `MB`/`MiB`/`M` 都得认),否则显示对、算出 NaN。
+12. **CURL 格式化**:多行 curl 的 JSON body 必须压成单行;`fetch()` 的 JSON body 用 `JSON.stringify(对象)`,别二次 stringify。
+13. **本地 HTML 预览 iframe 沙箱**:只给 `allow-scripts` 会让 frame 变不透明来源,父页面 `contentWindow.document` 抛 `SecurityError`;本地编辑器用 `allow-scripts allow-same-origin`。
+14. **`LocalMedia.vue` 选文件**:必须先把 `input.files` 快照成数组再清空 `input.value`,否则 Blink 会连带清空 FileList(表现为「选了文件夹什么都没显示」)。
+15. **排序一律用 `naturalCompare`**(`localeCompare` 加 `{numeric:true}`),不要直接 `localeCompare`,否则 `10 - …` 会排在 `1 - …` 前面。
+16. **依赖 API 事实**:cron-parser v5 只有 `CronExpressionParser.parse` 且 `next()` 要 `.toDate()`;cronstrue 用 `cronstrue/i18n` + `zh_CN`;marked v18 的 renderer 收到 token 对象;gifenc `writeFrame(Uint8Array, w, h, {palette, delay})`;exifr 去掉 `ifd0: true`。
+17. **自动化验证假象**:后台标签页里 `<transition>` 的 leave 收不到 `transitionend`,`.win-overlay` 会残留 `win-leave-active` 且 `opacity:0` —— 不是 bug,判关闭请看 class / opacity 或直接 reload,别去改 `AppWindow.vue`。
+18. **Code Mode 的 `browser.evaluate` 里没有 `setTimeout`**:延时必须在**页面脚本内部**声明 `const sleep = ms => new Promise(r => setTimeout(r, ms))`;导航(`location.href` / `reload`)必须单独一次 eval;`input.focus()` 对已聚焦元素不再触发 `focus`,验证下拉用 `dispatchEvent(new FocusEvent('focus'))`。
+19. **headless Chrome 截图会挂死**:`--user-data-dir=<新目录>` + `--no-proxy-server` 组合会卡十几分钟;可靠写法是不带这两个参数、`localhost:<port>`、`--virtual-time-budget=6000`,并用 `subprocess.run(..., timeout=75)` 兜底。**macOS 没有 `timeout` 命令**。
+20. **运行时校验目录时 esbuild 遇到 `.vue` 动态 import 会报 `No loader is configured for ".vue"`**:加 stub 插件,或直接正则抽注册表 `name:`;Pinia 运行时测试要把 `pinia`/`vue`/`vue-demi` 标 external。
 
-> 找Tab 全量 126 个应用名可从 `zhaotab-home.html` 的 `<noscript>` 链接清单提取(原临时文件在 `/tmp`,已把候选名单固化在本文档,不必依赖 `/tmp`)。以上候选均已排除游戏与阅读。**A 类批次至此全部完成,剩余未做项只有 B 类(需用户拍板)与 C 类(工程债)。**
+---
 
-**B. 需要用户拍板才能做的(不建议自作主张)**
-- 依赖重型库 / 第三方服务 / ML 的:图片去背景、Whois 查询、PDF 裁剪、在线解压文件、随机图片(外链图源)、完整 SVG 编辑器(已有「SVG 图案生成器」近似覆盖)。可降级为「外部网站快捷方式」或跳过,**做之前先问用户**。
-- ~~找Tab 有、我们暂时没做的细节:搜索结果分组、最近打开、列表 / 网格视图切换~~ ✅ 已完成(`42898e2`,用户选定该项):
-  - 商店:最近打开横条(`.zt-recent-chip`)+ 搜索按「最近打开 / 最匹配 / 相关结果」分组 + 结果统计 + 网格 / 列表切换(`storeView` 持久化)。
-  - 桌面:搜索框聚焦且输入为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点击命中即打开并 `pushRecent`(去重前移,最多 12 条)。
-  - 状态:`stores/desktop.ts` 新增 `recentIds` / `storeView` + `recentItems` getter + `pushRecent()` / `setStoreView()`,随导出 / 导入 JSON 一起备份。
-  - 实测:商店视图切换持久化(`storeView: list`)、最近打开 2 条、搜索「图片」= 最匹配 12 + 相关 14 = 26 条 2 组;桌面聚焦 → 「最近打开 2」、输入「端口」→ 「搜索结果 1」、点击打开窗口并记录顺序 `["port-lookup","pomodoro"]`。
-- 真正的浏览器插件(目前只做了书签小工具)——仍未做。
-- 登录 / 云端同步:按 9.1 的约定不做后端,目前以「仅本地 + JSON 备份」等价实现;若用户改口需要真同步,再单独立项。
+## 8. 历史时间线(压缩版,查旧 commit 时用)
 
-**C. 工程债(非主线,可延后)**
-- ~~`README.md` 仍是早期版本~~ ✅ 已更新(2026-11-10):桌面形态 / 应用商店 / 设置 / 105 个应用 / 8 类计数 / 统一目录架构,均与实测一致。
-- 构建大 chunk 警告:vendor(2.55MB)/ vendor-markdown(1.02MB)/ vendor-ui(943KB)/ heic2any(1.35MB),属既有情况。
-- `LanTransfer.vue` 的真实 WebRTC 连通性仍需在真 Chrome + 手机上验证(内置 Review 浏览器无 WebRTC 能力,自动化测不了,见第 6 节)。
+### 早期(2026-10-29 ~ 11-09)· 纯工具站
+- 27 个路由工具 + Home/Sidebar/CommandPalette;`utils/common.ts`、`utils/image.ts` 成型。
+- 本地媒体浏览器(`LocalMedia.vue`,HEIC 走 `heic2any` 动态加载)、本地漫画阅读器(`LocalManga.vue`,`webkitdirectory` + `naturalCompare`)、局域网直传(`LanTransfer.vue`,MQTT 信令 + WebRTC DataChannel,并新增 `lan`「局域网」分类)。
+- 移除过:便签、书签管理、程序员计算器,以及旧的「最近使用」特性(现在的「最近打开」是 11-11 新做的,不要混淆)。
+- 起草并否决了 fswatch + launchd 自动提交方案;**如发现 `~/Library/LaunchAgents/` 有残留 plist 应删除**。
 
-### 9.4 踩过的坑(按「下次最容易再踩」排序,务必先看)
+### 2026-11-10 上午 · 按旧节奏扩应用
+- `e947574`:修两处模板问题(九宫格切图、图片转 Base64 的 `v-if`/`v-else` 夹 `<input hidden>`),提交此前未提交的 5 个应用。
+- `2783321`:节拍器、URL 参数解析、JWT 解析、文本行处理、SVG 图案生成器。
 
-1. **必须跑 `npm run build`,不能只跑 type-check**。`vue-tsc --noEmit` 不做 Vue 模板 codegen,模板编译崩溃只在 `vite build` 暴露。批量定位:`node -e` 调 `@vue/compiler-sfc` 的 `compileTemplate()` 扫 `src/views/apps/*.vue`。
-2. **`v-if` 与 `<template v-else>` 之间不能夹任何元素**(连 `<input hidden>` 也不行),否则 codegen 报 `Cannot read properties of undefined (reading 'type')` / `Codegen node is missing`。修法:把中间元素移到 `v-if` 之前;中间只留 HTML 注释是安全的。已修 `ImageToBase64.vue`、`NineGridCut.vue`。
-3. **新增应用必须同时改两处 + 追加发布批次**:① `desktopApps.ts` 注册表;② `appCatalog.ts` 的 `RELEASE_BATCHES` 追加一批(key 数组),否则 `isNew`/`releasedAt` 为 0,「最新上架」里看不到新应用。`CATALOG` 由注册表派生,**不要另建目录**。
-4. **`desktopApps.ts` 的 `category` 是字面量联合类型**。用 `数据文件`/`图片工具`/`文本工具`/`局域网` 等 uTools 自有分类时,要同时扩展该联合类型**和** `appCatalog.ts` 的 `APP_CATEGORY_MAP`,否则类型检查失败 / 分类落到默认 `效率工具`。
-5. **`teleport to="body"` 的元素拿不到 `.desktop` 上的 CSS 变量**。右键菜单 `.ctx` 原来用 `var(--fg)` / `var(--glass-bg)` / `var(--shadow)`,实际全 undefined 导致文字不可读;必须在 `.ctx` 自己身上定义并在 `html.dark` 下覆盖。
-6. **面板深链接只能用 vue-router 的 `query`,不能新增路由记录**:`App.vue` 在桌面模式下根本不渲染 `<router-view>`,且路由是 `createWebHistory`,`/store` 这类路径会「No match found」。用 `?p=store` + `computed` 的 get/set 调 `router.replace({query})`。**不要用 `window.history.replaceState` 直接改 URL**,会让 vue-router 内部状态与地址栏脱钩(书签小工具原来就踩了这个)。
-7. **headless Chrome 截图会挂死**:给 `--user-data-dir=<新目录>` + `--no-proxy-server` 组合会让进程卡住 18 分钟以上。可复用的可靠写法是不带这两个参数、`http://localhost:<port>/`、`--virtual-time-budget=6000`,并用 Python `subprocess.run(..., timeout=75)` 兜底。**macOS 没有 `timeout` 命令**,别写 `timeout 90 chrome ...`。
-8. **运行时校验目录时 esbuild 会因 `.vue` 动态 import 报 `No loader is configured for ".vue" files`**。解法:加一个 esbuild 插件把 `.vue` 解析到 stub 命名空间返回 `export default {}`;或干脆用正则从两个注册表源文件里抽 `name:` 做粗校验。Pinia store 的运行时测试则要把 `pinia`/`vue`/`vue-demi` 标 `external`,否则两实例冲突报 `getActivePinia()`。
-9. **`AppIcon.vue` 外链 favicon 会失效**:只把 `<img>` 隐藏会留空白图标。现在用 `imgFailed` + `watch(iconUrl)` 回退到 emoji → Element Plus 图标 → 名称首字。`AddAppPage.vue` 还会用 `new Image()` 预检 URL,加载不成功就不写入配置。
-10. **CURL 格式化的两个序列化坑**:生成多行 curl 时 JSON body 必须压成单行,否则单引号内换行会破坏命令;生成 `fetch()` 时 JSON body 用 `JSON.stringify(对象字面量)`,普通文本 body 直接用字符串字面量,不能二次 `JSON.stringify` 加引号。
-11. **`el-select allow-create` 的自定义值要能被归一化**:字节换算里用户可能输入 `MB` / `MiB` / `M`,`normUnit()` 必须先剥 `iB` 再匹配 `[KMGTP]`,否则显示对了但换算结果是 NaN。
-12. **图标名要验**:`@element-plus/icons-vue` 里写字符串名,新增应用前用 `node -e "...'Headset' in require('@element-plus/icons-vue')"` 确认(`headphones` 不存在,应为 `Headset`)。
-13. **Git 推 GitHub 连不上**(443 超时 / `HTTP2 framing layer`):`git -c http.proxy=http://127.0.0.1:7897 push origin main`,不要写死进 git config。
-14. **每次改完立即 commit + push**(第 0 节),不要等用户提醒;提交信息用中文一句话 `feat: …` / `fix: …` / `docs: …`。
-15. **Vue 3 响应式坑:push 进 `ref([])` 的对象,之后必须经响应式数组的代理访问和改**。先 `const it = {...}; items.value.push(it); compress(it)` 后,`it` 是 raw 对象,对它的赋值(即使压缩已完成)不会触发界面更新——表现为 UI 永远停在「压缩中」。修法:push 后取回响应式代理再操作(`const target = items.value.find(x => x.id === it.id)`),或在 `addItem` 里直接 `compress(items.value[items.value.length - 1])`。已修 `ImageCompress.vue`。同理,computed 里读取模块级 `let` 变量(如 `ImageCrop.vue` 的 `imgMeta`)不建立依赖,必须改用 `ref`。
-16. **`<input hidden>` 等元素夹在 `v-if` / `v-else` 之间就是坑 #2 的现场**:P5-2 的 `ImageCrop.vue` 又踩了一次,写模板时先放隐藏 input,再写 `v-if` 块。
-17. **本地 HTML 预览的 iframe 沙箱**:只给 `sandbox="allow-scripts"` 会让 frame 变成不透明来源,父页面 `contentWindow.document` 直接抛 `SecurityError`(自动化校验也会挂)。本地编辑器自己的代码用 `allow-scripts allow-same-origin` 即可,弹窗 / 表单提交 / 顶级导航仍被拦。
-18. **`el-radio-group` 的 `@change` 参数类型**:模板内联 `(v) => …` 会因隐式 `any` 过不了 type-check,改成命名函数并显式标注 `(v: string | number | boolean)`。
-19. **自动化验证时「窗口关不掉」多半是假象**:浏览器 tab 在后台(`document.hasFocus()` 为 false)时,Vue `<transition>` 的 leave 依赖 `transitionend`,可能收不到,`.win-overlay` 会一直挂着 `win-enter-from win-leave-from win-leave-active` 且 `opacity: 0`。这不是 bug——判断是否关闭要看 class / opacity,或直接 `location.reload()` 重置,别去改 `AppWindow.vue`。
-20. **Code Mode 的 `browser.evaluate` 里没有 `setTimeout`**:所有延时都要在**页面脚本内部**声明 `const sleep = (ms) => new Promise(r => setTimeout(r, ms))`;导航(`location.href` / `reload`)必须单独一次 eval,不能与后续 DOM 查询同段,否则 `Inspected target navigated or closed`。另:`input.focus()` 对已聚焦元素不会再触发 `focus` 事件(下拉不出现),验证时用 `dispatchEvent(new FocusEvent('focus'))`。
+### 2026-11-10 起 · 主线转向「完整模仿找Tab」
+- 范围约定见第 0 节与 README;游戏与阅读类整体排除。
+- `e5648b3` P0:统一目录 + 状态 v2 + 壁纸预设。
+- `8c03f48` P1:桌面模式设为默认首页(壁纸/系统栏/时钟/搜索/网格/Dock/右键菜单),新增 `AppIcon.vue`。
+- `d95f732` P2–P4:商店 / 添加 App / 设置三个整页,删除旧 drawer;`?p=` 深链接;书签小工具;修 `teleport` 的 CSS 变量问题。
+- P5-1 `d785ccc`:字节换算、ASCII 码表、HTTP 状态码、CURL 格式化、JSON/CSV 转换。
+- P5-2 `118e7b2`:图片压缩、图片裁切、随机头像、印章生成器、代码美化截图(修了 raw 对象不响应、computed 读 `let` 两个响应式坑)。
+- P5-3 `8d00ff1`:浏览器环境检测、WebSocket 测试、HTML 编辑器、四象限笔记、防休眠(Wake Lock 被拒 → 音频回退)。
+- P5-4 `a229bc0`:IMEI 校验生成(卢恩算法)、手速测试、字帖生成器、算术题生成器、端口速查。
+- 文档 `e63c1f3` + README 重写 `c3012b2`(桌面形态 / 105 应用 / 8 类计数,与实测一致)。
+- `42898e2` + `d43fae7`:B 类选定项——最近打开 / 搜索分组 / 网格列表切换(详见 3.3)。
 
-### 9.5 接手后的推荐动作
+---
 
-1. `npm run type-check` && `npm run build`,确认基线干净;`git status -sb` 应为空、`HEAD` = `origin/main`。
-2. **A 类 P5 批次已全部完成**(P5-1~P5-4,共 20 个应用,`CATALOG` 105),`README.md` 也已同步。B 类中用户已选定的「搜索结果分组 + 最近打开 + 视图切换」已在 `42898e2` 完成;剩余 B 类只有重型库 / 第三方服务项(去背景、Whois、PDF 裁剪、解压、随机图源、SVG 编辑器)与浏览器插件,均需先问用户。
-3. 如仍需新增应用,沿用批次流程:写 `src/views/apps/*.vue` → 改两个注册表 + `RELEASE_BATCHES` → `npm run build` → 浏览器实测 → commit → push;并把 9.2 表格、CATALOG 数量、9.3 状态同步更新到本文档。
-4. 遇到 B 类「需要拍板」的项,先问用户再动手(不要自作主张接重型库 / 第三方服务)。
+## 9. 下次接手推荐动作
+
+1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
+2. **先问用户要做哪一项**:B 类需拍板(第 6 节),或 C 类工程债(LanTransfer 人工验证 / chunk 优化)。
+3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
+4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。

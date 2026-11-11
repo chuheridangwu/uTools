@@ -77,6 +77,10 @@ interface DesktopState extends DesktopPrefs {
   hiddenIds: string[]
   dockIds: string[]
   customSites: CustomSite[]
+  /** 最近打开的应用 key(最新在前,最多 12 条) */
+  recentIds: string[]
+  /** 商店视图:网格 / 列表 */
+  storeView: 'grid' | 'list'
 }
 
 /* ------------------------------------------------------------------ *
@@ -106,6 +110,8 @@ function defaults(): DesktopState {
     hiddenIds: [],
     dockIds: [...DEFAULT_DOCK_IDS],
     customSites: [],
+    recentIds: [],
+    storeView: 'grid',
     ...defaultPrefs(),
   }
 }
@@ -144,6 +150,9 @@ function sanitize(d: DesktopState): DesktopState {
   // 自定义网站若被清理掉记录,同步从桌面/Dock 移除
   d.desktopIds = d.desktopIds.filter((k) => !isSiteKey(k) || siteKeys.has(k))
   d.dockIds = d.dockIds.filter((k) => !isSiteKey(k) || siteKeys.has(k))
+  // 最近打开只保留目录里仍存在的应用
+  d.recentIds = uniq((d.recentIds ?? []).filter((k) => typeof k === 'string' && CATALOG_MAP.has(k))).slice(0, 12)
+  d.storeView = d.storeView === 'list' ? 'list' : 'grid'
   // 兜底偏好字段
   const p = defaultPrefs()
   d.wallpaper = d.wallpaper?.preset ? d.wallpaper : p.wallpaper
@@ -259,6 +268,8 @@ export const useDesktopStore = defineStore('utools-desktop', {
     dock: (s): string[] => s.dockIds,
     /** 隐藏的应用目录条目(设置页「隐藏的应用」用) */
     hiddenItems: (s) => s.hiddenIds.map((k) => CATALOG_MAP.get(k)).filter((e) => e !== undefined),
+    /** 最近打开(按打开时间倒序,已过滤下架条目) */
+    recentItems: (s) => s.recentIds.map((k) => CATALOG_MAP.get(k)).filter((e) => e !== undefined),
     /** 桌面上的自定义网站 */
     sites: (s): CustomSite[] => s.customSites,
     /** 壁纸 CSS background */
@@ -282,6 +293,8 @@ export const useDesktopStore = defineStore('utools-desktop', {
         hiddenIds: [...this.hiddenIds],
         dockIds: [...this.dockIds],
         customSites: [...this.customSites],
+        recentIds: [...this.recentIds],
+        storeView: this.storeView,
         wallpaper: this.wallpaper,
         iconSize: this.iconSize,
         iconStyle: this.iconStyle,
@@ -417,6 +430,20 @@ export const useDesktopStore = defineStore('utools-desktop', {
     setShowDock(v: boolean): void { this.showDock = v; this.persist() },
     setDoubleClickHide(v: boolean): void { this.doubleClickHide = v; this.persist() },
 
+    /** 记录最近打开(去重前移,最多 12 条) */
+    pushRecent(key: string): void {
+      if (!CATALOG_MAP.has(key)) return
+      const next = [key, ...this.recentIds.filter((k) => k !== key)].slice(0, 12)
+      if (next.length === this.recentIds.length && next.every((k, i) => k === this.recentIds[i])) return
+      this.recentIds = next
+      this.persist()
+    },
+
+    setStoreView(v: 'grid' | 'list'): void {
+      this.storeView = v
+      this.persist()
+    },
+
     /** 当前 localStorage 占用字节数(设置页「存储位置」用) */
     storageUsageBytes(): number {
       let total = 0
@@ -440,6 +467,7 @@ export const useDesktopStore = defineStore('utools-desktop', {
           hidden_app_ids: this.hiddenIds,
           dock_app_ids: this.dockIds,
           custom_sites: this.customSites,
+          recent_app_ids: this.recentIds,
           preferences: {
             mode: this.mode,
             wallpaper: this.wallpaper,
@@ -451,6 +479,7 @@ export const useDesktopStore = defineStore('utools-desktop', {
             showClock: this.showClock,
             showDock: this.showDock,
             doubleClickHide: this.doubleClickHide,
+            storeView: this.storeView,
           },
           all_tags: ALL_TAGS,
         },
@@ -493,6 +522,9 @@ export const useDesktopStore = defineStore('utools-desktop', {
         const dockIds = Array.isArray(c.dock_app_ids) || Array.isArray(c.dock) || Array.isArray(c.dockIds)
           ? ((c.dock_app_ids ?? c.dock ?? c.dockIds) as unknown[]).filter((k): k is string => typeof k === 'string')
           : []
+        const recentIds = Array.isArray(c.recent_app_ids) || Array.isArray(c.recentIds)
+          ? ((c.recent_app_ids ?? c.recentIds) as unknown[]).filter((k): k is string => typeof k === 'string')
+          : []
 
         const wp = prefs.wallpaper as DesktopPrefs['wallpaper'] | undefined
         const base = defaults()
@@ -500,6 +532,8 @@ export const useDesktopStore = defineStore('utools-desktop', {
           ...base,
           mode: prefs.mode === 'desktop' || prefs.mode === 'classic' ? prefs.mode : this.mode,
           desktopIds, hiddenIds, dockIds, customSites,
+          recentIds,
+          storeView: prefs.storeView === 'list' ? 'list' : 'grid',
           wallpaper: wp?.preset ? wp : this.wallpaper,
           iconSize: ['s', 'm', 'l'].includes(prefs.iconSize as string) ? prefs.iconSize as DesktopState['iconSize'] : this.iconSize,
           iconStyle: prefs.iconStyle === 'square' ? 'square' : 'rounded',
@@ -514,6 +548,8 @@ export const useDesktopStore = defineStore('utools-desktop', {
         this.hiddenIds = cleaned.hiddenIds
         this.dockIds = cleaned.dockIds
         this.customSites = cleaned.customSites
+        this.recentIds = cleaned.recentIds
+        this.storeView = cleaned.storeView
         this.wallpaper = cleaned.wallpaper
         this.iconSize = cleaned.iconSize
         this.iconStyle = cleaned.iconStyle

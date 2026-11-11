@@ -8,7 +8,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Moon, Search, Setting, Shop, Sunny } from '@element-plus/icons-vue'
+import { Moon, Search, Setting, Shop, Sunny, Clock } from '@element-plus/icons-vue'
 import { useDesktopStore, type DesktopItem } from '@/stores/desktop'
 import { useAppStore } from '@/stores/app'
 import {
@@ -39,10 +39,11 @@ const iconBoxStyle = computed(() => ({ width: `${iconPx.value}px`, height: `${ic
 /* ------------------------------ 搜索 ------------------------------ */
 const searchRef = ref<HTMLInputElement>()
 const searchKw = ref('')
+const searchFocused = ref(false)
 
 interface Hit extends DesktopItem { fromCatalog: boolean }
 
-/** 桌面上的应用优先,其次补上商店里尚未添加的应用(可直接添加并打开) */
+/** 搜索命中:先桌面应用,再商店未添加应用 */
 const searchHits = computed<Hit[]>(() => {
   const q = normalizeSearch(searchKw.value)
   if (!q) return []
@@ -61,6 +62,28 @@ const searchHits = computed<Hit[]>(() => {
     }))
   return [...mine, ...rest].slice(0, 9)
 })
+
+/** 空查询时展示「最近打开」(聚焦即出现) */
+const recentHits = computed<Hit[]>(() =>
+  desktop.recentItems.slice(0, 6).map((e) => ({
+    key: e.key, name: e.name, icon: e.icon, accent: e.accent, kind: e.kind,
+    short: e.short, desc: e.desc, category: e.categoryLabel,
+    isNew: e.isNew, isHot: e.isHot, needsLogin: e.needsLogin,
+    fromCatalog: false,
+  })),
+)
+
+const hitGroups = computed(() => {
+  if (normalizeSearch(searchKw.value)) {
+    return [{ key: 'match', title: '搜索结果', items: searchHits.value }].filter((g) => g.items.length)
+  }
+  return [{ key: 'recent', title: '最近打开', items: recentHits.value }].filter((g) => g.items.length)
+})
+
+const showHitPanel = computed(() =>
+  (searchFocused.value && !normalizeSearch(searchKw.value) && recentHits.value.length > 0) ||
+  (!!normalizeSearch(searchKw.value) && searchHits.value.length > 0),
+)
 
 function hitKind(h: Hit): string {
   return h.fromCatalog ? '商店 · 添加并打开' : h.kind === 'tool' ? '工具' : h.kind === 'app' ? '应用' : '网站'
@@ -86,6 +109,7 @@ function openKey(key: string) {
   }
   if (!CATALOG_MAP.has(key)) return
   if (!desktop.isOnDesktop(key)) desktop.add(key)
+  desktop.pushRecent(key)
   windowState.key = key
   windowState.visible = true
 }
@@ -303,7 +327,7 @@ function onTileDblClick(item: DesktopItem) {
       <div class="clock-date">{{ clockDate }}</div>
     </div>
 
-    <!-- 中央搜索(支持拼音) -->
+    <!-- 中央搜索(支持拼音;聚焦空查询显示最近打开) -->
     <div class="search-wrap">
       <div class="search glass">
         <el-icon :size="18"><Search /></el-icon>
@@ -313,22 +337,31 @@ function onTileDblClick(item: DesktopItem) {
           class="search-input"
           placeholder="搜索工具或应用,支持拼音(如 chakanqi、ewm)"
           @keydown.enter="onSearchEnter"
+          @focus="searchFocused = true"
+          @blur="searchFocused = false"
         />
         <kbd class="kbd">⌘K</kbd>
       </div>
-      <div v-if="searchKw && searchHits.length" class="hits glass">
-        <div v-for="h in searchHits" :key="h.key" class="hit" @click="onHit(h)">
-          <AppIcon
-            :name="h.name" :icon="h.icon" :accent="h.accent"
-            :emoji="h.emoji" :icon-url="h.iconUrl" :size="30" :font-size="15"
-          />
-          <span class="hit-name">{{ h.name }}</span>
-          <span v-if="h.isNew" class="hit-badge new">新</span>
-          <span v-else-if="h.isHot" class="hit-badge hot">最热</span>
-          <span class="hit-kind">{{ hitKind(h) }}</span>
-        </div>
+      <div v-if="showHitPanel" class="hits glass">
+        <template v-for="g in hitGroups" :key="g.key">
+          <div class="hits-group">
+            <el-icon :size="12"><Clock /></el-icon>
+            <span>{{ g.title }}</span>
+            <span class="hits-group-n">{{ g.items.length }}</span>
+          </div>
+          <div v-for="h in g.items" :key="h.key" class="hit" @mousedown.prevent="onHit(h)">
+            <AppIcon
+              :name="h.name" :icon="h.icon" :accent="h.accent"
+              :emoji="h.emoji" :icon-url="h.iconUrl" :size="30" :font-size="15"
+            />
+            <span class="hit-name">{{ h.name }}</span>
+            <span v-if="h.isNew" class="hit-badge new">新</span>
+            <span v-else-if="h.isHot" class="hit-badge hot">最热</span>
+            <span class="hit-kind">{{ hitKind(h) }}</span>
+          </div>
+        </template>
       </div>
-      <div v-else-if="searchKw" class="hits glass empty">没有找到相关应用,试试「应用商店」</div>
+      <div v-else-if="searchKw && !searchHits.length" class="hits glass empty">没有找到相关应用,试试「应用商店」</div>
     </div>
 
     <!-- 应用图标网格 -->
@@ -580,6 +613,20 @@ function onTileDblClick(item: DesktopItem) {
   overflow-y: auto;
 }
 .hits.empty { padding: 14px; text-align: center; font-size: 12px; color: var(--fg-soft); }
+.hits-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-soft);
+  letter-spacing: 0.02em;
+}
+.hits-group-n {
+  font-weight: 400;
+  opacity: 0.7;
+}
 .hit {
   display: flex;
   align-items: center;

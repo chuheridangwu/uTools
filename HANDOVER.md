@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · `HEAD` = `origin/main` = `d43fae7` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `663740f` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -73,7 +73,22 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 ### 3.2 构建 / 校验
 
 - `npm run type-check` → 0 错误。
-- `npm run build` → 通过(EXIT=0)。仅剩既有的 >1MB chunk 提示:`vendor`(2.55MB,含 jimp)、`vendor-markdown`(1.02MB)、`vendor-ui`(943KB)、`heic2any`(1.35MB)。属既有情况,非回归。
+- `npm run build` → 通过(EXIT=0)。
+
+**分包现状(2026-11-11 调整,commit `663740f`)**:
+
+| chunk | 大小 | 是否首屏加载 |
+| --- | --- | --- |
+| `index` | 126KB | ✅ |
+| `vendor-core`(vue/router/pinia/pinyin-pro) | 418KB | ✅ |
+| `vendor-ui`(element-plus) | 1.07MB | ✅ |
+| `vendor-markdown`(marked / highlight.js) | 1.03MB | 懒加载 |
+| `heic2any` | 1.35MB | 懒加载 |
+| `ImageToPdf`(含 jsPDF) | 391KB | 懒加载 |
+| `CronParser`(cron-parser + cronstrue) | 307KB | 懒加载 |
+| `mqtt` | 338KB | 懒加载 |
+
+> 首屏 JS 由旧策略的 **3.4MB 降到 1.5MB**(`index.html` 只 preload 3 个 chunk)。旧 `manualChunks` 把所有 node_modules 塞进单个 `vendor`,导致 jspdf / mqtt / papaparse 这些只被懒加载视图使用的库也被首屏预加载。**新增第三方库时不要再回到「统一 vendor」写法**。
 
 ### 3.3 最近一次交付(B 类,用户选定项)
 
@@ -160,7 +175,8 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 | 真云同步 | 与 9.1 约定冲突,除非用户改口 |
 
 ### C. 工程债(可延后)
-- 大 chunk 警告(见 3.2),需要时再对 jimp / heic2any 做更细的按需拆分。
+- ~~大 chunk 警告~~ ✅ 已优化(2026-11-11,`663740f`):改为按需分包,首屏 JS 3.4MB → 1.5MB;`vendor-markdown` / `heic2any` / `ImageToPdf` / `CronParser` / `mqtt` 等只在用到时加载。仍 >1MB 的只剩 `vendor-ui`(element-plus 全量)与 `vendor-markdown`,如需继续压缩可改 Element Plus 按需引入(改动面较大,需回归全部页面)。
+- `package.json` 里的 `jimp` **已无任何源码引用**(`grep -rn jimp src` 为空),属历史残留;移除前确认没有动态引用即可(本次未动,避免无谓 lockfile 变更)。
 - `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。
 
 ---
@@ -187,6 +203,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 18. **Code Mode 的 `browser.evaluate` 里没有 `setTimeout`**:延时必须在**页面脚本内部**声明 `const sleep = ms => new Promise(r => setTimeout(r, ms))`;导航(`location.href` / `reload`)必须单独一次 eval;`input.focus()` 对已聚焦元素不再触发 `focus`,验证下拉用 `dispatchEvent(new FocusEvent('focus'))`。
 19. **headless Chrome 截图会挂死**:`--user-data-dir=<新目录>` + `--no-proxy-server` 组合会卡十几分钟;可靠写法是不带这两个参数、`localhost:<port>`、`--virtual-time-budget=6000`,并用 `subprocess.run(..., timeout=75)` 兜底。**macOS 没有 `timeout` 命令**。
 20. **运行时校验目录时 esbuild 遇到 `.vue` 动态 import 会报 `No loader is configured for ".vue"`**:加 stub 插件,或直接正则抽注册表 `name:`;Pinia 运行时测试要把 `pinia`/`vue`/`vue-demi` 标 external。
+21. **`manualChunks` 不要把全部 `node_modules` 归到一个 `vendor`**:只被懒加载视图使用的重库(jsPDF、mqtt、papaparse、cron-parser)会被塞进首屏 chunk 一起预加载。正确做法:只为首屏必需的运行时(vue / vue-router / pinia / pinyin-pro)建 `vendor-core`,其余 `return undefined` 让 Rollup 跟随按需 chunk;改完看 `dist/index.html` 的 preload 列表验证。
 
 ---
 
@@ -213,6 +230,8 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - P5-4 `a229bc0`:IMEI 校验生成(卢恩算法)、手速测试、字帖生成器、算术题生成器、端口速查。
 - 文档 `e63c1f3` + README 重写 `c3012b2`(桌面形态 / 105 应用 / 8 类计数,与实测一致)。
 - `42898e2` + `d43fae7`:B 类选定项——最近打开 / 搜索分组 / 网格列表切换(详见 3.3)。
+- `e5fcab1`:交接文档重写为速览式结构(第 0 节速览 / 4.1 新增应用 SOP / 20 条踩坑)。
+- `663740f` + 文档:分包改为按需加载,首屏 JS 3.4MB → 1.5MB(详见 3.2);已实测桌面、商店 105 卡、图片转 PDF、哈希生成器(SHA-256 校验)、Cron 解析均正常且重库仅在打开时加载。
 
 ---
 

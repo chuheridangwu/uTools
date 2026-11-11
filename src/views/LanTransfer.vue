@@ -101,6 +101,9 @@ const busy = ref(false)
 const awaitingPeer = ref<Peer | null>(null)
 const incomingInvite = ref<Peer | null>(null)
 
+/** 已接受、正在协商(区分「等待接受」与「建立直连」) */
+const negotiating = ref(false)
+
 const pc = ref<RTCPeerConnection | null>(null)
 const channel = ref<RTCDataChannel | null>(null)
 const statusText = ref('')
@@ -157,6 +160,30 @@ function stopSignalTimers() {
   inviteTimer = stopTimer(inviteTimer)
   acceptTimer = stopTimer(acceptTimer)
   offerTimer = stopTimer(offerTimer)
+}
+
+/** 协商超时看门狗:卡在 ICE 时给出可操作提示 */
+let negotiateTimer: number | null = null
+
+function startNegotiateWatchdog() {
+  stopNegotiateWatchdog()
+  negotiateTimer = window.setTimeout(() => {
+    negotiateTimer = null
+    if (!connected.value) {
+      teardown()
+      awaitingPeer.value = null
+      incomingInvite.value = null
+      statusText.value = '直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」'
+      ElMessage.warning('直连超时,可能是跨网络 NAT 限制')
+    }
+  }, 20000)
+}
+
+function stopNegotiateWatchdog() {
+  if (negotiateTimer) {
+    window.clearTimeout(negotiateTimer)
+    negotiateTimer = null
+  }
 }
 
 async function joinLobby() {
@@ -268,9 +295,11 @@ async function handleSignal(msg: SignalMsg) {
       const inviterName = msg.fromName || '对方'
       incomingInvite.value = { id: inviterId, name: inviterName, platform: msg.platform || '未知设备', lastSeen: Date.now() }
       peerName.value = inviterName
+      negotiating.value = true
       statusText.value = `正在与 ${inviterName} 建立直连…`
       sig(msg.from, { t: 'accept' })
       preparePeerConnection(false) // 接收方:等待 offer
+      startNegotiateWatchdog()
       // 重复发送 accept,直到收到 offer / 连接建立,避免 accept 丢包导致双方互等
       acceptTimer = window.setInterval(() => {
         if (!incomingInvite.value || connected.value || pc.value?.currentRemoteDescription) {
@@ -298,13 +327,17 @@ async function handleSignal(msg: SignalMsg) {
     if (pc.value) return
     const target = awaitingPeer.value.id
     peerName.value = awaitingPeer.value.name
+    negotiating.value = true
     statusText.value = `正在与 ${peerName.value} 建立直连…`
     preparePeerConnection(true)
     const p = pc.value!
     const offer = await p.createOffer()
     await p.setLocalDescription(offer)
+    // 等候选收集完成再发,让 SDP 自带 candidate,不依赖单独的 ICE 信令是否送达
+    await waitIceGather(p, 2500)
     lastOffer = p.localDescription
     sig(target, { t: 'offer', sdp: lastOffer })
+    startNegotiateWatchdog()
     // offer 也重发:answer 丢失时还有机会恢复
     offerTimer = window.setInterval(() => {
       if (!lastOffer || connected.value) {
@@ -339,6 +372,8 @@ async function handleSignal(msg: SignalMsg) {
     await flushPendingIce(p)
     const answer = await p.createAnswer()
     await p.setLocalDescription(answer)
+    // 同样等候选收集完成,answer 自带 candidate
+    await waitIceGather(p, 2500)
     lastAnswer = p.localDescription
     sig(msg.from, { t: 'answer', sdp: lastAnswer })
     return
@@ -398,11 +433,10 @@ function connectTo(peer: Peer) {
   }, 4000)
   // 30 秒未响应自动取消
   setTimeout(() => {
-    if (awaitingPeer.value && !connected.value) {
+    if (awaitingPeer.value && !connected.value && !negotiating.value) {
       ElMessage.warning(`${peer.name} 未响应`)
       awaitingPeer.value = null
       stopSignalTimers()
-      statusText.value = ''
     }
   }, 30000)
 }
@@ -459,6 +493,8 @@ function preparePeerConnection(asOfferer: boolean) {
 function bindChannel(ch: RTCDataChannel) {
   ch.onopen = () => {
     connected.value = true
+    negotiating.value = false
+    stopNegotiateWatchdog()
     stopSignalTimers()
     incomingInvite.value = null
     awaitingPeer.value = null
@@ -467,6 +503,8 @@ function bindChannel(ch: RTCDataChannel) {
   ch.onclose = () => {
     if (!connected.value) return
     connected.value = false
+    negotiating.value = false
+    stopNegotiateWatchdog()
     stopSignalTimers()
     stopSpeedTimer()
     sending = false
@@ -482,6 +520,8 @@ function bindChannel(ch: RTCDataChannel) {
 /* --------------------------- 断开 / 清理 --------------------------- */
 function teardown() {
   stopSignalTimers()
+  stopNegotiateWatchdog()
+  negotiating.value = false
   pendingIce.length = 0
   try { channel.value?.close() } catch { /* noop */ }
   try { pc.value?.close() } catch { /* noop */ }
@@ -804,12 +844,12 @@ function prepareManualPeer(asOfferer: boolean) {
   }
 }
 
-async function waitIceGather(p: RTCPeerConnection): Promise<void> {
+async function waitIceGather(p: RTCPeerConnection, timeout = 4000): Promise<void> {
   if (p.iceGatheringState === 'complete') return
   await new Promise<void>((resolve) => {
     const done = () => resolve()
     p.addEventListener('icegatheringstatechange', () => { if (p.iceGatheringState === 'complete') done() })
-    setTimeout(done, 4000)
+    setTimeout(done, timeout)
   })
 }
 
@@ -964,11 +1004,18 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 发起端等待中提示 -->
-      <div v-if="awaitingPeer && !connected" class="panel pending">
+      <!-- 发起端:等待对方接受 -->
+      <div v-if="awaitingPeer && !connected && !negotiating" class="panel pending">
         <el-icon class="spin"><Refresh /></el-icon>
-        <span>正在等待 {{ awaitingPeer.name }} 接受{{ debugNote ? ` (${debugNote})` : '' }}…</span>
+        <span>正在等待 {{ awaitingPeer.name }} 接受…</span>
         <el-button size="small" text @click="() => { awaitingPeer = null; disconnect() }">取消</el-button>
+      </div>
+
+      <!-- 对方已接受:正在建立直连(双方都会显示) -->
+      <div v-if="!connected && negotiating" class="panel pending">
+        <el-icon class="spin"><Refresh /></el-icon>
+        <span>{{ statusText || '正在建立直连…' }}{{ debugNote ? ` (${debugNote})` : '' }}</span>
+        <span class="hint">若长时间停留在此状态,说明当前网络无法穿透 NAT,可改用「手动配对码」或换到同一 WiFi</span>
       </div>
     </template>
 
@@ -1136,8 +1183,8 @@ onMounted(() => {
       </div>
     </template>
 
-    <!-- 连接失败提示条 -->
-    <div v-if="statusText && !connected && statusText.includes('拒绝')" class="error-bar">
+    <!-- 连接失败 / 超时提示条 -->
+    <div v-if="statusText && !connected && !negotiating && !awaitingPeer" class="error-bar">
       <el-icon><Close /></el-icon>
       <span>{{ statusText }}</span>
       <el-button size="small" text @click="statusText = ''">知道了</el-button>

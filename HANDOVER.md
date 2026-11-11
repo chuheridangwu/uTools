@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `47876e0` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `8984563` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -75,29 +75,33 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 - `npm run type-check` → 0 错误。
 - `npm run build` → 通过(EXIT=0)。
 
-**分包现状(2026-11-11 调整,commit `663740f`)**:
+**分包现状(2026-11-11 Element Plus 按需引入后,commit `8984563`)**:
 
 | chunk | 大小 | 是否首屏加载 |
 | --- | --- | --- |
-| `index` | 126KB | ✅ |
-| `vendor-core`(vue/router/pinia/pinyin-pro) | 418KB | ✅ |
-| `vendor-ui`(element-plus) | 1.07MB | ✅ |
+| `index`(业务代码 + 按需 UI) | 486KB | ✅ |
+| `vendor-core`(vue/router/pinia/pinyin-pro) | 419KB | ✅ |
+| `_commonjsHelpers` | 755B | ✅ |
+| `index.css`(按需样式 + base) | 95KB | ✅ |
 | `vendor-markdown`(marked / highlight.js) | 1.03MB | 懒加载 |
 | `heic2any` | 1.35MB | 懒加载 |
-| `ImageToPdf`(含 jsPDF) | 391KB | 懒加载 |
+| `ImageToPdf`(含 jsPDF) | 392KB | 懒加载 |
 | `CronParser`(cron-parser + cronstrue) | 307KB | 懒加载 |
 | `mqtt` | 338KB | 懒加载 |
 
-> 首屏 JS 由旧策略的 **3.4MB 降到 1.5MB**(`index.html` 只 preload 3 个 chunk)。旧 `manualChunks` 把所有 node_modules 塞进单个 `vendor`,导致 jspdf / mqtt / papaparse 这些只被懒加载视图使用的库也被首屏预加载。**新增第三方库时不要再回到「统一 vendor」写法**。
+> 首屏 JS 由旧策略的 **3.4MB → 1.5MB → 0.9MB**(`index.html` 只 preload `index` / `vendor-core` / `_commonjsHelpers` + 1 个 CSS)。旧 `manualChunks` 把所有 node_modules 塞进单个 `vendor`,导致 jspdf / mqtt / papaparse 这些只被懒加载视图使用的库也被首屏预加载。**新增第三方库时不要再回到「统一 vendor」写法**。
+>
+> Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
-### 3.3 最近一次交付(B 类,零依赖自选)
+### 3.3 最近一次交付(工程优化,用户选定)
 
-`47876e0`:**SVG 编辑器**(`svg-editor`,设计资源,零依赖)。
-- 矩形 / 椭圆 / 直线 / 文字绘制,拖动移动、四角缩放、图层显隐与排序、填充描边透明度、80 步撤销重做。
-- 导出 SVG 源码 / 2 倍 PNG / 复制源码,画布背景与 50%–200% 缩放。
-- 实测:`drawing.svg` 417 字节合法标记,`drawing@2x.png` 1920×1280;撤销重做、Delete 快捷键、清空确认与恢复均正常,控制台无报错。
+`8984563`:**Element Plus 按需引入**。
+- `vite.config.ts` 增加 `unplugin-vue-components` + `unplugin-element-plus`;`main.ts` 去掉全量 `app.use(ElementPlus)` 与 `dist/index.css`;语言包改由 `App.vue` 的 `<el-config-provider :locale="zhCn">` 提供。
+- `manualChunks` 移除 `vendor-ui`,并加 `onlyExplicitManualChunks: true`,避免 CJS helper 把 `vendor-markdown` 拖进首屏。
+- 首屏 JS 约 1.5MB → 0.9MB(`index` 486KB + `vendor-core` 419KB + helper 755B),CSS 95KB(gzip 16KB);构建产物 127 个按需 CSS 文件。
+- 自动生成的 `src/types/components.d.ts` 暴露并修掉 6 处历史类型问题(el-tag 类型值、radio/checkbox 回调签名、对象字面量 placeholder 等)。
 
-上一次:`42898e2` + 文档 `d43fae7`:商店与桌面的最近打开、搜索分组、网格 / 列表视图切换。
+上一次:`47876e0` + 文档 `3bd8ad7`:**SVG 编辑器**(`svg-editor`,设计资源,零依赖)。详情见第 8 节。
 - 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
 - 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
 - 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
@@ -180,7 +184,9 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 | ~~完整 SVG 编辑器~~ | ✅ 已完成(`svg-editor`,零依赖轻量矢量编辑,见第 8 节) |
 
 ### C. 工程债(可延后)
-- ~~大 chunk 警告~~ ✅ 已优化(2026-11-11,`663740f`):改为按需分包,首屏 JS 3.4MB → 1.5MB;`vendor-markdown` / `heic2any` / `ImageToPdf` / `CronParser` / `mqtt` 等只在用到时加载。仍 >1MB 的只剩 `vendor-ui`(element-plus 全量)与 `vendor-markdown`,如需继续压缩可改 Element Plus 按需引入(改动面较大,需回归全部页面)。
+- ~~大 chunk 警告~~ ✅ 已优化(2026-11-11,`663740f`):改为按需分包,首屏 JS 3.4MB → 1.5MB;`vendor-markdown` / `heic2any` / `ImageToPdf` / `CronParser` / `mqtt` 等只在用到时加载。
+- ~~Element Plus 全量引入~~ ✅ 已完成(2026-11-11,`8984563`):按需引入 + `onlyExplicitManualChunks`,首屏 1.5MB → 0.9MB,`vendor-ui` 消失,详见第 8 节。
+- 仍 >1MB 的只剩 `vendor-markdown`(marked / highlight.js)与 `heic2any`,都只在打开对应应用时加载,暂不处理。
 - `package.json` 里的 `jimp` **已无任何源码引用**(`grep -rn jimp src` 为空),属历史残留;移除前确认没有动态引用即可(本次未动,避免无谓 lockfile 变更)。
 - `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。
 
@@ -263,11 +269,29 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 开发中修正:`Circle` 图标在 `@element-plus/icons-vue` 中不存在(椭圆改用 `Aim`);`setPointerCapture` 包裹 try/catch,避免合成指针事件抛 `NotFoundError`;模板内联箭头回调改为具名处理函数;画布外套 `.canvas-wrap` 滚动容器,缩放按像素设宽。
 - 已知限制:无贝塞尔路径、无渐变、无文字换行;不支持导入已有 SVG 二次编辑。
 
+### 2026-11-11 · Element Plus 按需引入(工程优化)
+- 背景:全量 `app.use(ElementPlus)` + `dist/index.css` 让首屏无条件加载 1.07MB `vendor-ui`;99 个文件从 `element-plus` 根包导入 `ElMessage`,无法靠改模板解决。
+- 方案:`vite.config.ts` 引入 `unplugin-vue-components`(配 `ElementPlusResolver({ importStyle: 'css' })`,处理 `<el-*>` 与 `v-loading`)和 `unplugin-element-plus`(把 `import { ElMessage } from 'element-plus'` 自动改写为按组件导入 + 样式,99 个文件零改动)。
+- `main.ts` 移除全量注册与全量 CSS,仅保留暗色变量;语言包迁移到 `App.vue`:
+  ```html
+  <el-config-provider :locale="zhCn"> ... </el-config-provider>
+  ```
+- 分包修正:`manualChunks` 不再强制 `vendor-ui`;同时补 `onlyExplicitManualChunks: true`。
+  - 踩坑 1:只把 element-plus 设为 `undefined` 时,`vendor-ui` 仍是 1.07MB 且被首屏 preload。
+  - 踩坑 2:再把 marked / highlight.js 也设为 `undefined` 后,两者被合并进入口,`index` 变成 1.03MB(更糟)。
+  - 最终:保留 `vendor-markdown` 显式 chunk + `onlyExplicitManualChunks: true`,CJS 互操作 helper 不再被塞进该 chunk,首屏只 preload 入口 / `vendor-core` / 755B helper。
+- 类型影响:自动生成的 `src/types/components.d.ts` 让 `el-*` 组件有了真实类型,暴露 6 处历史问题并已修复:
+  - `ApiTester.vue` `pickColor` 返回 `danger/warning/primary/success/info`;
+  - `CpsTest.vue`、`ImageCrop.vue`、`SvgEditor.vue` 的 radio / checkbox 回调补 `undefined` 与 `CheckboxValueType` 兼容;
+  - `CodeGenerator.vue` 的 `:placeholder='{...}'` 改为普通字符串属性。
+- 实测构建:`type-check` 0 错误、`build` 通过;首屏 chunk = `index` 486KB + `vendor-core` 419KB + `_commonjsHelpers` 755B + CSS 95KB(gzip 16KB);`vendor-markdown` 不再出现在 `index.html` 的 preload;预览页桌面、设置页(`.zt-page` / 卡片 / 导航)渲染正常,控制台无报错;`el-button` / `el-slider` 计算样式为 Element Plus 默认样式(24px 高、6px 轨道),说明按需样式已生效。
+- 已知限制:首次打开某个应用时会额外请求该应用的 CSS(按需),弱网下可能出现极短的无样式瞬间;如果以后发现样式缺失,优先检查 resolver 是否覆盖了对应组件 / 指令。
+
 ---
 
 ## 9. 下次接手推荐动作
 
 1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
-2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成),或 C 类工程债(LanTransfer 人工验证 / Element Plus 按需引入)。
+2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成);C 类剩 LanTransfer 人工验证(Element Plus 按需引入已于 `8984563` 完成)。
 3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
 4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。

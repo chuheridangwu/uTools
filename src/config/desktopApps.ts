@@ -818,6 +818,16 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     category: '数据文件',
     comp: () => import('@/views/apps/UnzipTool.vue') as unknown as Promise<Component>,
   },
+  {
+    key: 'svg-editor',
+    name: 'SVG 编辑器',
+    short: '矢量绘图与源码导出',
+    desc: '轻量矢量编辑:矩形、椭圆、直线、文字,拖动移动与四角缩放、图层排序与显隐、填充描边透明度、撤销重做,导出 SVG 源码或 2 倍 PNG,全部本地完成。',
+    icon: 'Edit',
+    accent: '#8b5cf6',
+    category: '设计资源',
+    comp: () => import('@/views/apps/SvgEditor.vue') as unknown as Promise<Component>,
+  },
 ]
 
 export const APP_MAP: Map<string, DesktopAppMeta> = new Map(DESKTOP_APPS.map((a) => [a.key, a]))

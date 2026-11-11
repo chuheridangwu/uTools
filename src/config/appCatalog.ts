@@ -142,6 +142,7 @@ const RELEASE_BATCHES: string[][] = [
   ['imei-tool', 'cps-test', 'copybook', 'arithmetic-gen', 'port-lookup'],
   ['whois-lookup'],
   ['unzip-tool'],
+  ['svg-editor'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()

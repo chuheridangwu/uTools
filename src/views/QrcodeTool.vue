@@ -154,9 +154,13 @@ function removeLogo() {
   if (generated.value) void generate()
 }
 
-/** 下载 PNG(未生成时先自动生成) */
+/** 下载 PNG(始终按当前设置重新生成,避免导出旧图) */
 async function download() {
-  if (!generated.value) await generate()
+  if (!text.value.trim()) {
+    ElMessage.warning('请先输入二维码内容')
+    return
+  }
+  await generate()
   const c = canvasRef.value
   if (!c || !generated.value) return
   c.toBlob((b) => {

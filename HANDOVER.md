@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `2a6c357` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `0f0f56a` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -93,15 +93,16 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 >
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
-### 3.3 最近一次交付(功能增强)
+### 3.3 最近一次交付
 
-`5b374ed`:**二维码生成增强**。
-- 支持在二维码中心上传图片(`image/*`,≤8MB),可调图片大小 10%–35%,白色圆角底板 + 等比缩放 + 圆角裁切。
-- 新增「生成二维码」按钮,点击才(重新)生成;上传图片后自动切到 H 级容错,容错过低时也会自动提升。
-- 未生成时预览区显示占位;「下载 PNG」未生成会先自动生成;「重置」恢复默认并重新生成。
-- `type-check` 0 错误、`build` 通过(`QrcodeTool` chunk 6.92KB / gzip 3.01KB)。
+`0f0f56a`:**局域网直传信令可靠性修复**(跨网络收不到「接受」)。
+- 公共 MQTT 信令改为 QoS 1 发布/订阅;邀请每 4 秒重发,接受方每 3 秒重发 accept,offer 每 4 秒重发,直到收到 answer / 连接建立。
+- 重复邀请不再被误判拒绝(同设备重发直接回 accept);15 秒内拒绝过的设备不再弹窗。
+- ICE 候选在远端描述未就绪时先缓存,设置完成后补加,避免候选丢失。
+- 新增跨网络说明:公共大厅全球可见、没有 TURN 时对称 NAT 可能连不上;`iceConnectionState=failed` 会给出明确提示。
+- 结果:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.01KB / gzip 9.08KB)。
 
-上一次:`8984563`:**Element Plus 按需引入**,首屏 JS 1.5MB → 0.9MB,详见第 8 节。
+上一次:`5b374ed` + 文档 `d581fcb`/`2a6c357`:**二维码生成支持中心图片与手动生成按钮**。详见第 8 节。
 - 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
 - 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
 - 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
@@ -296,6 +297,20 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   - 「下载 PNG」始终按当前设置重新生成后再导出(避免改动设置后导出旧图,内容为空时直接提示);「重置」恢复默认参数并重新生成;未生成时预览区显示占位文案。
 - 校验:`npm run type-check` 0 错误、`npm run build` 通过;`QrcodeTool` 产物 6.92KB(gzip 3.01KB),按需 CSS 1.06KB。
 - 已知限制:中心图片不支持在线裁剪 / 透明背景处理;图片过大时仅提示不自动压缩;生成仍依赖 `qrcode` 包的默认纠错与颜色参数。
+
+### 2026-11-11 · 局域网直传:跨网信令可靠性(问题修复)
+- 背景:用户反馈在非局域网下能看到对方、邀请也能弹出,但对方点「接受」后发起方收不到;实现里发现/信令走公共 MQTT(`broker.emqx.io`),文件走 WebRTC,`newPeer()` 只配置了 Google / Cloudflare 两个 STUN,**没有 TURN**。
+- 原因判断:公共 MQTT 原先用默认 QoS 0,消息可能丢;重连窗口内发布的消息也会丢;且没有任何重发机制,accept 一丢双方就互等。
+- 修复(`src/views/LanTransfer.vue`,commit `0f0f56a`):
+  - 信令发布 / 订阅改为 QoS 1;
+  - 邀请每 4 秒重发,直到收到 accept / reject;接受方每 3 秒重发 accept,直到收到 offer;offer 每 4 秒重发,直到收到 answer;
+  - 重复邀请按「同设备重发」处理直接回 accept,不再误判为忙碌拒绝;15 秒内拒绝过的设备直接回 reject,避免反复弹窗;
+  - ICE 候选在远端描述未就绪时缓存,`setRemoteDescription` 后 `flushPendingIce` 补加;
+  - `connectTo` 先 `teardown()` 清理上次失败残留;`onopen` / `onclose` / `teardown` 统一清理定时器;
+  - `iceConnectionState === 'failed'` 时提示「当前网络可能需要 TURN 中继,建议同一 WiFi 或手动配对」。
+- 页面说明改为如实描述:在线名单是公共 MQTT 大厅(全球可见,并非真正局域网发现);跨网络无 TURN 时对称 NAT / 公司网络可能连不上,同一 WiFi 最稳。
+- 校验:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.01KB,gzip 9.08KB)。
+- 仍未做:TURN 中继(需要第三方服务 / 自建服务器,按约定先问用户);真正的局域网 mDNS 发现。
 
 ---
 

@@ -808,6 +808,16 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     category: '开发工具',
     comp: () => import('@/views/apps/WhoisLookup.vue') as unknown as Promise<Component>,
   },
+  {
+    key: 'unzip-tool',
+    name: '在线解压',
+    short: '本地解压 ZIP 压缩包',
+    desc: '纯前端解析 ZIP(store / deflate),支持拖入压缩包、逐项预览文本与图片、单文件下载,并可把已解压文件重新打包导出;文件只在内存处理,不上传服务器。',
+    icon: 'Box',
+    accent: '#f97316',
+    category: '数据文件',
+    comp: () => import('@/views/apps/UnzipTool.vue') as unknown as Promise<Component>,
+  },
 ]
 
 export const APP_MAP: Map<string, DesktopAppMeta> = new Map(DESKTOP_APPS.map((a) => [a.key, a]))

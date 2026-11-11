@@ -216,7 +216,12 @@
 
 **B. 需要用户拍板才能做的(不建议自作主张)**
 - 依赖重型库 / 第三方服务 / ML 的:图片去背景、Whois 查询、PDF 裁剪、在线解压文件、随机图片(外链图源)、完整 SVG 编辑器(已有「SVG 图案生成器」近似覆盖)。可降级为「外部网站快捷方式」或跳过,**做之前先问用户**。
-- 找Tab 有、我们暂时没做的细节:搜索结果分组(站内 / 站外 / 最近使用 / 最匹配 / 已隐藏)、「最近打开」记录、列表 / 网格视图切换、真正的浏览器插件(目前只做了书签小工具)。
+- ~~找Tab 有、我们暂时没做的细节:搜索结果分组、最近打开、列表 / 网格视图切换~~ ✅ 已完成(`42898e2`,用户选定该项):
+  - 商店:最近打开横条(`.zt-recent-chip`)+ 搜索按「最近打开 / 最匹配 / 相关结果」分组 + 结果统计 + 网格 / 列表切换(`storeView` 持久化)。
+  - 桌面:搜索框聚焦且输入为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点击命中即打开并 `pushRecent`(去重前移,最多 12 条)。
+  - 状态:`stores/desktop.ts` 新增 `recentIds` / `storeView` + `recentItems` getter + `pushRecent()` / `setStoreView()`,随导出 / 导入 JSON 一起备份。
+  - 实测:商店视图切换持久化(`storeView: list`)、最近打开 2 条、搜索「图片」= 最匹配 12 + 相关 14 = 26 条 2 组;桌面聚焦 → 「最近打开 2」、输入「端口」→ 「搜索结果 1」、点击打开窗口并记录顺序 `["port-lookup","pomodoro"]`。
+- 真正的浏览器插件(目前只做了书签小工具)——仍未做。
 - 登录 / 云端同步:按 9.1 的约定不做后端,目前以「仅本地 + JSON 备份」等价实现;若用户改口需要真同步,再单独立项。
 
 **C. 工程债(非主线,可延后)**
@@ -244,10 +249,12 @@
 16. **`<input hidden>` 等元素夹在 `v-if` / `v-else` 之间就是坑 #2 的现场**:P5-2 的 `ImageCrop.vue` 又踩了一次,写模板时先放隐藏 input,再写 `v-if` 块。
 17. **本地 HTML 预览的 iframe 沙箱**:只给 `sandbox="allow-scripts"` 会让 frame 变成不透明来源,父页面 `contentWindow.document` 直接抛 `SecurityError`(自动化校验也会挂)。本地编辑器自己的代码用 `allow-scripts allow-same-origin` 即可,弹窗 / 表单提交 / 顶级导航仍被拦。
 18. **`el-radio-group` 的 `@change` 参数类型**:模板内联 `(v) => …` 会因隐式 `any` 过不了 type-check,改成命名函数并显式标注 `(v: string | number | boolean)`。
+19. **自动化验证时「窗口关不掉」多半是假象**:浏览器 tab 在后台(`document.hasFocus()` 为 false)时,Vue `<transition>` 的 leave 依赖 `transitionend`,可能收不到,`.win-overlay` 会一直挂着 `win-enter-from win-leave-from win-leave-active` 且 `opacity: 0`。这不是 bug——判断是否关闭要看 class / opacity,或直接 `location.reload()` 重置,别去改 `AppWindow.vue`。
+20. **Code Mode 的 `browser.evaluate` 里没有 `setTimeout`**:所有延时都要在**页面脚本内部**声明 `const sleep = (ms) => new Promise(r => setTimeout(r, ms))`;导航(`location.href` / `reload`)必须单独一次 eval,不能与后续 DOM 查询同段,否则 `Inspected target navigated or closed`。另:`input.focus()` 对已聚焦元素不会再触发 `focus` 事件(下拉不出现),验证时用 `dispatchEvent(new FocusEvent('focus'))`。
 
 ### 9.5 接手后的推荐动作
 
 1. `npm run type-check` && `npm run build`,确认基线干净;`git status -sb` 应为空、`HEAD` = `origin/main`。
-2. **A 类 P5 批次已全部完成**(P5-1~P5-4,共 20 个应用,`CATALOG` 105)。后续要么等用户就 9.3-B 的项拍板,要么做 9.3-C 工程债(优先:更新 `README.md`)。
+2. **A 类 P5 批次已全部完成**(P5-1~P5-4,共 20 个应用,`CATALOG` 105),`README.md` 也已同步。B 类中用户已选定的「搜索结果分组 + 最近打开 + 视图切换」已在 `42898e2` 完成;剩余 B 类只有重型库 / 第三方服务项(去背景、Whois、PDF 裁剪、解压、随机图源、SVG 编辑器)与浏览器插件,均需先问用户。
 3. 如仍需新增应用,沿用批次流程:写 `src/views/apps/*.vue` → 改两个注册表 + `RELEASE_BATCHES` → `npm run build` → 浏览器实测 → commit → push;并把 9.2 表格、CATALOG 数量、9.3 状态同步更新到本文档。
 4. 遇到 B 类「需要拍板」的项,先问用户再动手(不要自作主张接重型库 / 第三方服务)。

@@ -1188,8 +1188,8 @@ onMounted(() => {
       </div>
     </template>
 
-    <!-- 连接失败 / 超时提示条 -->
-    <div v-if="statusText && !connected && !negotiating && !awaitingPeer" class="error-bar">
+    <!-- 连接失败 / 超时提示条(仅大厅模式:手动模式的状态文案在面板内展示) -->
+    <div v-if="mode === 'lobby' && statusText && !connected && !negotiating && !awaitingPeer" class="error-bar">
       <el-icon><Close /></el-icon>
       <span>{{ statusText }}</span>
       <el-button size="small" text @click="statusText = ''">知道了</el-button>

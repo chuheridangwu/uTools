@@ -1,8 +1,5 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import './styles/index.css'
 import './styles/desktop-pages.css'
@@ -13,6 +10,6 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(ElementPlus, { locale: zhCn }) // Element Plus 全量引入,并使用中文语言包
+// Element Plus 已改为按需引入(见 vite.config.ts),语言包由 App.vue 的 el-config-provider 提供
 
 app.mount('#app')

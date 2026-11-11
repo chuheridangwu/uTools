@@ -318,8 +318,8 @@ function setOpacity(v: number | undefined) { setNum('opacity', v) }
 function setRadius(v: number | undefined) { setNum('radius', v) }
 function setFillColor(v: string | null) { setColor('fill', v) }
 function setStrokeColor(v: string | null) { setColor('stroke', v) }
-function setBold(v: boolean) { toggleBold(v) }
-function setCanvasBg(v: string | number | boolean) { bg.value = String(v) }
+function setBold(v: string | number | boolean) { toggleBold(Boolean(v)) }
+function setCanvasBg(v: string | number | boolean | undefined) { if (v !== undefined) bg.value = String(v) }
 
 function toggleTransparent() {
   const s = styleTarget.value

@@ -93,7 +93,8 @@ function setDuration(d: number) {
   reset()
 }
 
-function onDurationChange(v: string | number | boolean) {
+function onDurationChange(v: string | number | boolean | undefined) {
+  if (v === undefined) return
   setDuration(Number(v))
 }
 

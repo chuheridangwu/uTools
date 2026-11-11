@@ -7,6 +7,7 @@
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Menu, Moon, Sunny, Search, HomeFilled, Monitor } from '@element-plus/icons-vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useAppStore } from '@/stores/app'
 import { useDesktopStore } from '@/stores/desktop'
 import { TOOL_MAP, TOOLS } from '@/config/tools'
@@ -48,11 +49,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <!-- 桌面模式:全屏桌面导航(找Tab 式) -->
-  <DesktopHome v-if="desktop.mode === 'desktop'" />
+  <!-- 语言包:按需引入后不再 app.use(ElementPlus),由 ConfigProvider 提供中文 -->
+  <el-config-provider :locale="zhCn">
+    <!-- 桌面模式:全屏桌面导航(找Tab 式) -->
+    <DesktopHome v-if="desktop.mode === 'desktop'" />
 
-  <!-- 经典模式:侧边栏 + 卡片 -->
-  <el-container v-else class="app-shell">
+    <!-- 经典模式:侧边栏 + 卡片 -->
+    <el-container v-else class="app-shell">
     <!-- 左侧导航 -->
     <Sidebar :collapsed="collapsed" />
 
@@ -123,6 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <!-- 命令面板 -->
     <CommandPalette v-model="paletteVisible" />
   </el-container>
+  </el-config-provider>
 </template>
 
 <script lang="ts">

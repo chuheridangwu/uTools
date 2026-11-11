@@ -213,7 +213,7 @@ function generate() {
             type="textarea"
             :rows="16"
             class="mono"
-            :placeholder='{"name":"tom","age":18,"tags":["a"]}'
+            placeholder='{"name":"tom","age":18,"tags":["a"]}'
           />
           <div class="mt8">
             <el-button size="small" @click="() => (input = '')">清空</el-button>

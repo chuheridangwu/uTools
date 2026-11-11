@@ -42,11 +42,11 @@ function parseHeaders(): Record<string, string> {
   }
 }
 
-function pickColor(s: number) {
-  if (s >= 500) return 'red'
-  if (s >= 400) return 'orange'
-  if (s >= 300) return 'blue'
-  if (s >= 200) return 'green'
+function pickColor(s: number): 'info' | 'success' | 'warning' | 'primary' | 'danger' {
+  if (s >= 500) return 'danger'
+  if (s >= 400) return 'warning'
+  if (s >= 300) return 'primary'
+  if (s >= 200) return 'success'
   return 'info'
 }
 

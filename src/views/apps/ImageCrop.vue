@@ -127,8 +127,8 @@ function onUp() {
   dragging.value = false
 }
 
-function changeRatio(key: string) {
-  cfg.ratioKey = key
+function changeRatio(key: string | number | boolean | undefined) {
+  cfg.ratioKey = String(key ?? '')
   cfg.zoom = 1
   cfg.offsetX = 0
   cfg.offsetY = 0

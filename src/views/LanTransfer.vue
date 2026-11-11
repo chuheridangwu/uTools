@@ -130,9 +130,34 @@ const urls = new Set<string>()
 /* --------------------------- MQTT(在线名单 + 信令) --------------------------- */
 const LOBBY_TOPIC = 'utools/lanx/lobby/v1'
 const sigTopicOf = (id: string) => `utools/lanx/sig/v1/${id}`
-let mqttClient: { publish: (topic: string, payload: string) => void; subscribe: (topic: string) => void; end: (force?: boolean) => void } | null = null
+let mqttClient: {
+  publish: (topic: string, payload: string, opts?: { qos?: 0 | 1 | 2 }) => void
+  subscribe: (topic: string | string[], opts?: { qos?: 0 | 1 | 2 }) => void
+  end: (force?: boolean) => void
+} | null = null
 let presenceTimer: number | null = null
 let pruneTimer: number | null = null
+
+/** 信令重发:公共 MQTT 是尽力投递,跨网络/重连时消息会丢,靠重发兜底 */
+let inviteTimer: number | null = null
+let acceptTimer: number | null = null
+let offerTimer: number | null = null
+let lastOffer: RTCSessionDescriptionInit | null = null
+let lastAnswer: RTCSessionDescriptionInit | null = null
+const pendingIce: RTCIceCandidateInit[] = []
+/** 刚拒绝过的设备,短时间内不再弹窗(避免重发的邀请反复打扰) */
+const rejectedAt = new Map<string, number>()
+
+function stopTimer(timer: number | null): null {
+  if (timer) window.clearInterval(timer)
+  return null
+}
+
+function stopSignalTimers() {
+  inviteTimer = stopTimer(inviteTimer)
+  acceptTimer = stopTimer(acceptTimer)
+  offerTimer = stopTimer(offerTimer)
+}
 
 async function joinLobby() {
   myName.value = myName.value || uniquifyName(randomName())
@@ -149,7 +174,7 @@ async function joinLobby() {
     client.on('connect', () => {
       lobbyState.value = 'ok'
       lobbyJoined = true
-      client.subscribe([LOBBY_TOPIC, sigTopicOf(myId)])
+      client.subscribe([LOBBY_TOPIC, sigTopicOf(myId)], { qos: 1 })
       void announce(true)
     })
     client.on('message', (_topic, payload) => void handleSignal(JSON.parse(payload.toString())))
@@ -188,7 +213,8 @@ function leaveLobby() {
 
 function sig(to: string | null, msg: Record<string, unknown>) {
   const payload = JSON.stringify({ ...msg, from: myId, fromName: myName.value, platform, to })
-  mqttClient?.publish(to ? sigTopicOf(to) : LOBBY_TOPIC, payload)
+  // 信令用 QoS 1,至少送达一次;重复消息由各分支自行去重
+  mqttClient?.publish(to ? sigTopicOf(to) : LOBBY_TOPIC, payload, { qos: 1 })
 }
 
 interface SignalMsg { t: string; from: string; fromName: string; platform: string; to?: string; id?: string; name?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }
@@ -215,6 +241,18 @@ async function handleSignal(msg: SignalMsg) {
   if (msg.to !== myId) return // 只处理点名给本端的信令
 
   if (msg.t === 'invite') {
+    const fromId = msg.from || msg.id || ''
+    // 刚拒绝过的设备:直接回 reject,避免重发的邀请反复弹窗
+    const rejectedTs = rejectedAt.get(fromId)
+    if (rejectedTs && Date.now() - rejectedTs < 15000) {
+      sig(fromId, { t: 'reject' })
+      return
+    }
+    // 重发的邀请:同一台设备已在配对 / 已接受,重发 accept 即可,不能误判为新邀请并拒绝
+    if (fromId && (incomingInvite.value?.id === fromId || (awaitingPeer.value?.id === fromId && !!pc.value))) {
+      sig(fromId, { t: 'accept' })
+      return
+    }
     if (connected.value || busy.value || incomingInvite.value) {
       sig(msg.from, { t: 'reject' })
       return
@@ -233,8 +271,17 @@ async function handleSignal(msg: SignalMsg) {
       statusText.value = `正在与 ${inviterName} 建立直连…`
       sig(msg.from, { t: 'accept' })
       preparePeerConnection(false) // 接收方:等待 offer
+      // 重复发送 accept,直到收到 offer / 连接建立,避免 accept 丢包导致双方互等
+      acceptTimer = window.setInterval(() => {
+        if (!incomingInvite.value || connected.value || pc.value?.currentRemoteDescription) {
+          acceptTimer = stopTimer(acceptTimer)
+          return
+        }
+        sig(inviterId, { t: 'accept' })
+      }, 3000)
     } catch (action) {
       if (action === 'cancel') {
+        rejectedAt.set(fromId, Date.now())
         sig(msg.from, { t: 'reject' })
         ElMessage.info('已拒绝连接')
       }
@@ -246,14 +293,26 @@ async function handleSignal(msg: SignalMsg) {
   }
 
   if (msg.t === 'accept' && awaitingPeer.value) {
-    // 对方接受了:发起端创建 offer
+    // 对方接受了:发起端创建 offer(重复 accept 直接忽略,避免重建连接)
+    inviteTimer = stopTimer(inviteTimer)
+    if (pc.value) return
+    const target = awaitingPeer.value.id
     peerName.value = awaitingPeer.value.name
     statusText.value = `正在与 ${peerName.value} 建立直连…`
     preparePeerConnection(true)
     const p = pc.value!
     const offer = await p.createOffer()
     await p.setLocalDescription(offer)
-    sig(awaitingPeer.value.id, { t: 'offer', sdp: p.localDescription })
+    lastOffer = p.localDescription
+    sig(target, { t: 'offer', sdp: lastOffer })
+    // offer 也重发:answer 丢失时还有机会恢复
+    offerTimer = window.setInterval(() => {
+      if (!lastOffer || connected.value) {
+        offerTimer = stopTimer(offerTimer)
+        return
+      }
+      sig(target, { t: 'offer', sdp: lastOffer })
+    }, 4000)
     return
   }
 
@@ -262,6 +321,7 @@ async function handleSignal(msg: SignalMsg) {
     ElMessage.warning(`${name} 拒绝了连接`)
     statusText.value = `${name} 拒绝了连接`
     awaitingPeer.value = null
+    stopSignalTimers()
     teardown()
     return
   }
@@ -269,10 +329,18 @@ async function handleSignal(msg: SignalMsg) {
   if (msg.t === 'offer') {
     const p = pc.value
     if (!p) return
+    acceptTimer = stopTimer(acceptTimer)
+    // 重发的 offer:已有 answer 就直接重发 answer,避免重复 setRemoteDescription 报错
+    if (p.currentRemoteDescription && lastAnswer) {
+      sig(msg.from, { t: 'answer', sdp: lastAnswer })
+      return
+    }
     await p.setRemoteDescription(msg.sdp!)
+    await flushPendingIce(p)
     const answer = await p.createAnswer()
     await p.setLocalDescription(answer)
-    sig(msg.from, { t: 'answer', sdp: p.localDescription })
+    lastAnswer = p.localDescription
+    sig(msg.from, { t: 'answer', sdp: lastAnswer })
     return
   }
 
@@ -281,13 +349,28 @@ async function handleSignal(msg: SignalMsg) {
     if (!p) return
     if (p.signalingState !== 'have-local-offer') return
     await p.setRemoteDescription(msg.sdp!)
+    await flushPendingIce(p)
+    offerTimer = stopTimer(offerTimer)
     return
   }
 
   if (msg.t === 'ice' && msg.candidate) {
     const p = pc.value
-    if (!p) return
+    // 远端描述还没设好时先缓存,设好后再补加,避免候选被丢掉导致连不上
+    if (!p || !p.remoteDescription) {
+      pendingIce.push(msg.candidate)
+      return
+    }
     try { await p.addIceCandidate(msg.candidate) } catch { /* 忽略乱序候选 */ }
+  }
+}
+
+/** 补加缓存中的 ICE 候选 */
+async function flushPendingIce(p: RTCPeerConnection) {
+  while (pendingIce.length) {
+    const candidate = pendingIce.shift()
+    if (!candidate) continue
+    try { await p.addIceCandidate(candidate) } catch { /* 过期候选 */ }
   }
 }
 
@@ -297,14 +380,28 @@ function connectTo(peer: Peer) {
     ElMessage.warning('已有连接在进行中,请先断开')
     return
   }
+  // 清掉上一次失败尝试残留的 PeerConnection / 定时器
+  teardown()
+  pendingIce.length = 0
+  lastOffer = null
+  lastAnswer = null
   awaitingPeer.value = peer
   statusText.value = `正在等待 ${peer.name} 接受…`
   sig(peer.id, { t: 'invite' })
+  // 公共 MQTT 会丢消息:每 4 秒重发邀请,直到收到 accept / reject
+  inviteTimer = window.setInterval(() => {
+    if (!awaitingPeer.value || awaitingPeer.value.id !== peer.id || connected.value) {
+      inviteTimer = stopTimer(inviteTimer)
+      return
+    }
+    sig(peer.id, { t: 'invite' })
+  }, 4000)
   // 30 秒未响应自动取消
   setTimeout(() => {
     if (awaitingPeer.value && !connected.value) {
       ElMessage.warning(`${peer.name} 未响应`)
       awaitingPeer.value = null
+      stopSignalTimers()
       statusText.value = ''
     }
   }, 30000)
@@ -322,7 +419,14 @@ function newPeer(): RTCPeerConnection {
   const note = () => { debugNote.value = `${p.iceConnectionState}/${p.connectionState}` }
   note()
   p.addEventListener('icegatheringstatechange', note)
-  p.addEventListener('iceconnectionstatechange', note)
+  p.addEventListener('iceconnectionstatechange', () => {
+    note()
+    // 跨网络时若双方都在对称 NAT / 公司网络下,没有 TURN 中继就会 failed
+    if (p.iceConnectionState === 'failed' && !connected.value) {
+      statusText.value = '直连失败:当前网络可能需要 TURN 中继,建议同一 WiFi 或改用「手动配对码」'
+      ElMessage.warning('WebRTC 直连失败,当前网络可能无法穿透 NAT')
+    }
+  })
   p.addEventListener('connectionstatechange', note)
   p.onicecandidate = (e) => {
     const target = awaitingPeer.value ?? incomingInvite.value
@@ -355,6 +459,7 @@ function preparePeerConnection(asOfferer: boolean) {
 function bindChannel(ch: RTCDataChannel) {
   ch.onopen = () => {
     connected.value = true
+    stopSignalTimers()
     incomingInvite.value = null
     awaitingPeer.value = null
     statusText.value = peerName.value ? `已连接 · ${peerName.value}` : '已连接 · 可开始传输'
@@ -362,6 +467,7 @@ function bindChannel(ch: RTCDataChannel) {
   ch.onclose = () => {
     if (!connected.value) return
     connected.value = false
+    stopSignalTimers()
     stopSpeedTimer()
     sending = false
     ackResolvers.clear()
@@ -375,6 +481,8 @@ function bindChannel(ch: RTCDataChannel) {
 
 /* --------------------------- 断开 / 清理 --------------------------- */
 function teardown() {
+  stopSignalTimers()
+  pendingIce.length = 0
   try { channel.value?.close() } catch { /* noop */ }
   try { pc.value?.close() } catch { /* noop */ }
   pc.value = null
@@ -782,8 +890,8 @@ onMounted(() => {
   <ToolPage>
     <template #title>局域网文件直传</template>
     <template #desc>
-      同一 WiFi 下两台设备打开本页,一键互传文件(手机 ↔ 电脑),文件与文本通过 WebRTC 设备直连,不经任何服务器中转。
-      在线名单经公共 MQTT 通道可见;公共通道不可达时可切换「手动配对」用复制粘贴码连接。
+      两台设备打开本页即可互传文件(手机 ↔ 电脑),文件与文本通过 WebRTC 直连,不经服务器中转。
+      在线名单来自公共 MQTT 大厅(全球可见);跨网络能否直连取决于双方 NAT,没有 TURN 中继时部分网络会失败,同一 WiFi 最稳。
     </template>
 
     <!-- 手动模式切换入口 -->
@@ -804,6 +912,11 @@ onMounted(() => {
             <template v-else-if="lobbyState === 'error'">公共大厅不可达,可切到「手动配对码」</template>
             <template v-else>当前在线设备 {{ peers.length + 1 }} 台(等一会儿别人的名字就会出现)</template>
           </span>
+        </div>
+
+        <div class="net-note">
+          <b>关于「局域网」:</b>在线名单走公共 MQTT 通道(全球可见),不是真正的局域网发现;文件走 WebRTC 点对点。
+          跨网络时若双方处于对称 NAT / 公司网络,没有 TURN 中继可能连不上,同一 WiFi 最稳定。
         </div>
 
         <!-- 本页网址二维码:手机扫码直接打开 -->
@@ -1059,6 +1172,17 @@ onMounted(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+.net-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  border-left: 3px solid var(--el-color-warning);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.net-note b { color: var(--el-text-color-primary); }
 .device {
   display: flex;
   align-items: center;

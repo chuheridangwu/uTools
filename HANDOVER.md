@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `4b15d30` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `7a0619e` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,11 +95,12 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`4b15d30`(含 `cb8159f`):**局域网直传「接受后无反馈」定位与修复**(先诊断,后改代码)。
+`7a0619e`(含 `cb8159f` / `4b15d30`):**局域网直传「接受后无反馈」定位与修复**(先诊断,后改代码)。
 - **诊断结论**:用两个标签页抓组件内部状态实测,双方 `signalingState` 均为 `stable` 且本地/远端 SDP 齐全 → **accept / offer / answer 信令其实已经送达**;但两份 SDP 的 `a=candidate` 数量都是 **0**,`addIceCandidate` 调用次数也是 **0**,`iceConnectionState` 始终为 `new`。所以真实卡点在 **ICE 候选未交换/未应用**,而发起方界面只在 `channel.onopen` 才清除 `awaitingPeer`,于是「ICE 失败」被显示成「没收到接受」。
 - **修复 1(连通性)**:大厅模式在发送 offer / answer 前先 `await waitIceGather(p, 2500)`,把候选写进 SDP,不再单纯依赖单独的 ICE 信令是否送达;`waitIceGather` 增加超时参数(默认 4000,手动配对模式行为不变)。
 - **修复 2(状态可见)**:新增 `negotiating` 状态,接受后发起方从「正在等待 X 接受…」切换为「正在与 X 建立直连… (ice/conn)」;接收方同样显示该面板。
 - **修复 3(超时兜底)**:协商启动 20 秒看门狗(`startNegotiateWatchdog`),超时后 `teardown()` 并展示常驻错误条「直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」」,双方一致;错误条条件从「仅拒绝」放宽到所有未连接且有文案的状态(排除等待/协商中)。若 `iceConnectionState` 提前变成 `failed`,立即结束协商(`4b15d30`),错误条立刻可见,不必等 20 秒。
+- **修复 4(避免误报)**:错误条新增 `mode === 'lobby'` 限定(`7a0619e`)——手动配对模式本身在面板内展示「正在生成邀请码 / 等待应答码」等状态,不能当成错误。
 - **实测(本机双标签页)**:A 点连接 → B 接受 → 双方立即显示「正在与对方建立直连… (new/new)」;20 秒后双方均出现上述错误条,`pending` 面板与 `awaitingPeer` 正确清理,可重新发起。信令链路(邀请/接受/offer/answer)正常。
 - **环境限制**:自动化浏览器中纯 host(不配 STUN)的 `RTCPeerConnection` 也产生 0 个候选(`iceGatheringState=complete`、候选数 0),因此本环境**无法**验证真实 P2P 能否打通;跨网络最终能否连通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络会失败(是否接 TURN 需用户拍板)。
 - 结果:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.81KB / gzip 9.29KB)。
@@ -319,11 +320,12 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   - 双方 `signalingState` 都是 `stable`,本地 / 远端 SDP 均存在 → accept 与 offer/answer **都已送达**;
   - 但两份 SDP 里 `a=candidate` 都是 **0**,`addIceCandidate` 调用数也是 **0**,`iceConnectionState` 一直 `new` → 真正的卡点是 **ICE 候选没交换/没应用**;
   - 发起方 UI 只在 `channel.onopen` 清 `awaitingPeer`,所以「ICE 失败」被显示成「还在等对方接受」——这就是用户看到的「收不到接受」。
-- 修复(`src/views/LanTransfer.vue`,commit `cb8159f`):
+- 修复(`src/views/LanTransfer.vue`,commit `cb8159f`,后续补充 `4b15d30` / `7a0619e`):
   - 大厅模式在 `setLocalDescription` 后 `await waitIceGather(p, 2500)` 再发 offer / answer,让 SDP 自带候选;`waitIceGather` 增加超时参数(默认仍是 4000,手动配对模式不变);
   - 新增 `negotiating` 状态:接受后发起方文案从「正在等待 X 接受…」切换为「正在与 X 建立直连… (ice/conn)」,接收方显示同样面板;
   - 新增 20 秒协商看门狗 `startNegotiateWatchdog`:超时 `teardown()`、清 `awaitingPeer` / `incomingInvite`,双端展示常驻错误条「直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」」;
-  - 失败提示条条件从「文案含拒绝」放宽为「未连接、非等待/协商、且 has 文案」,避免超时提示随面板消失。
+  - 失败提示条条件从「文案含拒绝」放宽为「未连接、非等待/协商、且 has 文案」,避免超时提示随面板消失;
+  - `iceConnectionState === 'failed'` 时立即结束协商、清状态并展示错误条(不必等 20 秒);错误条限定 `mode === 'lobby'`,避免手动配对模式的「正在生成邀请码 / 等待应答码」被当成错误。
 - 实测:接受后双端立即切到「正在建立直连… (new/new)」,20 秒后双端出现超时错误条且可重新发起;`npm run type-check` 0 错误,`build` 通过(24.81KB / gzip 9.29KB)。
 - 验证限制:该自动化浏览器里连纯 host(不配 STUN)的 `RTCPeerConnection` 都采集不到候选(`complete` 但 0 个),所以本环境无法验证真实 P2P 连通性;跨网最终能否打通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络必然失败。
 

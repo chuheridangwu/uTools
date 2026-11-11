@@ -798,6 +798,16 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     category: '开发工具',
     comp: () => import('@/views/apps/PortLookup.vue') as unknown as Promise<Component>,
   },
+  {
+    key: 'whois-lookup',
+    name: 'Whois 查询',
+    short: '域名 / IP 注册信息',
+    desc: '通过 RDAP 查询域名或 IP 的注册商、域名状态、注册与到期时间、DNS 与 DNSSEC,自动路由到对应注册局,并保留原始 JSON 可复制;纯前端直连,不经本站后端。',
+    icon: 'Aim',
+    accent: '#2563eb',
+    category: '开发工具',
+    comp: () => import('@/views/apps/WhoisLookup.vue') as unknown as Promise<Component>,
+  },
 ]
 
 export const APP_MAP: Map<string, DesktopAppMeta> = new Map(DESKTOP_APPS.map((a) => [a.key, a]))

@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `8984563` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-11** · 代码基线 `5b374ed` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -93,15 +93,15 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 >
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
-### 3.3 最近一次交付(工程优化,用户选定)
+### 3.3 最近一次交付(功能增强)
 
-`8984563`:**Element Plus 按需引入**。
-- `vite.config.ts` 增加 `unplugin-vue-components` + `unplugin-element-plus`;`main.ts` 去掉全量 `app.use(ElementPlus)` 与 `dist/index.css`;语言包改由 `App.vue` 的 `<el-config-provider :locale="zhCn">` 提供。
-- `manualChunks` 移除 `vendor-ui`,并加 `onlyExplicitManualChunks: true`,避免 CJS helper 把 `vendor-markdown` 拖进首屏。
-- 首屏 JS 约 1.5MB → 0.9MB(`index` 486KB + `vendor-core` 419KB + helper 755B),CSS 95KB(gzip 16KB);构建产物 127 个按需 CSS 文件。
-- 自动生成的 `src/types/components.d.ts` 暴露并修掉 6 处历史类型问题(el-tag 类型值、radio/checkbox 回调签名、对象字面量 placeholder 等)。
+`5b374ed`:**二维码生成增强**。
+- 支持在二维码中心上传图片(`image/*`,≤8MB),可调图片大小 10%–35%,白色圆角底板 + 等比缩放 + 圆角裁切。
+- 新增「生成二维码」按钮,点击才(重新)生成;上传图片后自动切到 H 级容错,容错过低时也会自动提升。
+- 未生成时预览区显示占位;「下载 PNG」未生成会先自动生成;「重置」恢复默认并重新生成。
+- `type-check` 0 错误、`build` 通过(`QrcodeTool` chunk 6.92KB / gzip 3.01KB)。
 
-上一次:`47876e0` + 文档 `3bd8ad7`:**SVG 编辑器**(`svg-editor`,设计资源,零依赖)。详情见第 8 节。
+上一次:`8984563`:**Element Plus 按需引入**,首屏 JS 1.5MB → 0.9MB,详见第 8 节。
 - 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
 - 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
 - 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
@@ -286,6 +286,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   - `CodeGenerator.vue` 的 `:placeholder='{...}'` 改为普通字符串属性。
 - 实测构建:`type-check` 0 错误、`build` 通过;首屏 chunk = `index` 486KB + `vendor-core` 419KB + `_commonjsHelpers` 755B + CSS 95KB(gzip 16KB);`vendor-markdown` 不再出现在 `index.html` 的 preload;预览页桌面、设置页(`.zt-page` / 卡片 / 导航)渲染正常,控制台无报错;`el-button` / `el-slider` 计算样式为 Element Plus 默认样式(24px 高、6px 轨道),说明按需样式已生效。
 - 已知限制:首次打开某个应用时会额外请求该应用的 CSS(按需),弱网下可能出现极短的无样式瞬间;如果以后发现样式缺失,优先检查 resolver 是否覆盖了对应组件 / 指令。
+
+### 2026-11-11 · 二维码生成:中心图片 + 手动生成(功能增强)
+- `src/views/QrcodeTool.vue`(路由工具 `qrcode-tool`,`/qrcode-tool`,图片工具):
+  - 新增中心图片:选择本地图片(限 `image/*`、≤8MB),以 dataURL 预览缩略图,`logoPercent` 控制图片占二维码宽度的 10%–35%;
+  - 绘制方式:先用 `QRCode.toCanvas` 生成二维码,再在中心画「白色圆角底板」,将图片等比缩放后用 `arcTo` 圆角路径裁切绘制,保证不变形、不糊边;
+  - 新增「生成二维码」按钮:点击才生成/刷新;首次进入自动生成一次;上传图片或移除图片时若已生成会自动刷新;修改其它设置后需手动点按钮;
+  - 有中心图片时自动把容错等级提升到 `H`(L/M 时),避免遮挡导致识别失败;
+  - 「下载 PNG」在未生成时会先自动生成;「重置」恢复默认参数并重新生成;未生成时预览区显示占位文案。
+- 校验:`npm run type-check` 0 错误、`npm run build` 通过;`QrcodeTool` 产物 6.92KB(gzip 3.01KB),按需 CSS 1.06KB。
+- 已知限制:中心图片不支持在线裁剪 / 透明背景处理;图片过大时仅提示不自动压缩;生成仍依赖 `qrcode` 包的默认纠错与颜色参数。
 
 ---
 

@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `9c1d309` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `04c14e7` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,7 +95,28 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-**长图拼接完整实现「布局拼图」功能**(`9c1d309`,`src/views/ImageStitch.vue` + 新增 `src/utils/collage.ts`、`src/config/collageLayouts.ts`),对齐参考站 `img.ops-coffee.com/photo/` 的**功能**而不只是样式。
+**JSON 查看器对齐 json.cn/jsononline**(`04c14e7`,`src/views/JsonViewer.vue` 重写,删除不再使用的 `src/components/JsonTreeNode.vue`),零新增依赖。
+- **布局**:左侧输入框(带行号、等宽对齐)+ 中间可拖动分隔条(22%–78%)+ 右侧格式化结果(带行号),整体高度 `clamp(420px, 66vh, 760px)`,与参考站比例一致(默认 41.67% / 58.33%)。
+- **结果区左上角工具条**(用户明确要求的「多个功能」):压缩 / 转XML / 显示行号 / 清空 / 保存 / 复制 / 折叠 / 示例 / 保留转义(勾选框)/ 全屏,按钮图标用 Element Plus 图标,`title` 悬停提示,激活态换色。
+- **语法着色**(逐值核对参考站计算样式):键 `#92278f`、字符串 `#3ab54a`、数字 `#25aae2`、布尔 `#f98280`、null `#f1592a`、链接 `#61d2d6`,统一 `font-weight:700`、14px / 行高 22px。
+- **折叠**:对象/数组前有方框图标(展开红色减号、折叠蓝色加号),折叠后显示 `Object{...}` / `Array[n]`;「折叠」按钮可一键折叠/展开全部。
+- **键值可编辑**:键与值都是 `contenteditable`,编辑后 350ms 防抖把 DOM 文本还原成 JSON 回写到左侧输入框(与参考站行为一致)。
+- **链接与图片预览**(用户明确要求):字符串里的 `http(s)` 自动变链接;图片扩展名(`png/jpg/jpeg/gif/webp/svg/bmp/avif/ico`)或 `data:image/` 的地址点击弹出 260px 小图卡片(内含「打开原图」),点空白处或 Esc 关闭。
+- **其它功能**:压缩(单行紧凑,可切回)、转 XML(`<?xml version…?>` + `<root>` + 2 空格缩进,数组用 `<item>`)、保存(下载 `format.<时间戳>.json`)、复制(先展开全部再复制)、示例、全屏(`position:fixed` 覆盖视口,Esc 退出)、保留转义(默认开,等价于把 `\u003e` / `\n` 保持字面量)、XML 输入自动转 JSON、错误信息红字显示、超大整数(≥16 位)用占位符保护不丢精度。
+- **实测**(dev server + 真实 DOM 操作):
+  - 着色:`getComputedStyle` 六类 token 颜色与参考站完全一致;
+  - 大整数:示例里 `305667554401374209 / 103248655202358790 / 123456789012345679` 原样显示(未变成 `…200`);
+  - 折叠:单节点折叠后 `Object{...}` 可见、body `display:none`;一键折叠 5/5、再点展开 0/5;
+  - 行号:输入 13 行、输出 31 行,两侧行高均 22px,首行偏移 10px 对齐,滚动时 `translateY(-scrollTop)` 同步;
+  - 压缩 → 1 行;转 XML → 正确头与根节点;保存的文件用 Python `json.loads` 校验通过(4 空格缩进、无首尾空行);复制提示成功;
+  - 图片预览:点击图片链接弹出 260×221 卡片,图片 `naturalWidth=400` 正常加载,点击别处自动关闭;
+  - 编辑同步:改一个字符串值后左侧文本变成 `{\n    "a": 1,\n    ...`,无多余空行;
+  - 错误:`{ "a": 1, }` → 红字 `SyntaxError: Expected double-quoted property name…`,修正后立即恢复;
+  - 深色模式:`html.dark` 下容器 `#171c23`、行号槽 `#1f252d`;全屏 `position:fixed` 覆盖 1537×1227,Esc 退出;
+  - `type-check` 0 错误、`build` 通过(`JsonViewer` 14.02KB / gzip 5.50KB,CSS 6.36KB)。
+- **踩坑**:结果区是 `innerHTML` 动态生成的,拿不到 Vue scoped 的 `data-v` 属性 → 所有 token 样式必须写成 `.jv-target :deep(.jv-key)` 之类,否则颜色完全不生效(首轮实测颜色全是继承色)。
+
+上一次:`9c1d309`:**长图拼接完整实现「布局拼图」功能**(135 布局 / 比例 / 边框 / 水印 / 导出)。
 - **左栏**:135 个布局模板(按图片数 2–16 分组,缩略图用 CSS Grid span 还原格子形状),外加「竖向长图 / 横向长图」两种特殊布局(保留原有长图拼接能力,长图模式下加图会自动增行)。
 - **中栏**:工具栏(文字 / 箭头 / 方框 / 圆圈 / 随机 / 清除)+ 画布。单元格支持点击上传、拖入整块区域、拖动平移(按溢出量归一化)、方向键微调(Shift 加速)、Delete 清空、双击复位;叠加元素可拖动、可删除、文字可直接编辑。
 - **右栏**:画布比例 14 个预设(1:1、16:9、9:16、16:10、4:3、3:4、2:3 6寸、3:2 6寸横、5:7 7寸、7:5 7寸横、4:5 8寸、5:4 8寸横、210:297 A4、297:210 A4横)+ 自定义比例;边框(上右下左分别设)、间距、圆角、背景色、背景图;水印(文字 / 字号 / 透明度 / 旋转 / 稀疏-中等-密集 / 平铺或 5 个单点位置);导出质量(高清 JPG / 标准 JPG / 无损 PNG)、复制到剪贴板、下载。
@@ -214,6 +235,8 @@ src/
 **107 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
 > **长图拼接(`/image-stitch`)已升级为完整「布局拼图」**:135 个布局模板 + 14 种画布比例 + 边框/间距/圆角/背景/水印 + 高清 JPG/PNG 导出 + 剪贴板,同时保留竖向/横向长图模式。详见 3.3。
+>
+> **JSON 查看器(`/json-viewer`)已对齐 json.cn/jsononline**:双栏 + 行号 + 可拖动分隔条,结果区工具条(压缩/转XML/行号/清空/保存/复制/折叠/示例/保留转义/全屏)、语法着色、折叠、键值直接编辑、网址自动变链接、**图片地址点击看小图**。详见 3.3。
 
 ---
 
@@ -268,6 +291,8 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 20. **运行时校验目录时 esbuild 遇到 `.vue` 动态 import 会报 `No loader is configured for ".vue"`**:加 stub 插件,或直接正则抽注册表 `name:`;Pinia 运行时测试要把 `pinia`/`vue`/`vue-demi` 标 external。
 21. **`manualChunks` 不要把全部 `node_modules` 归到一个 `vendor`**:只被懒加载视图使用的重库(jsPDF、mqtt、papaparse、cron-parser)会被塞进首屏 chunk 一起预加载。正确做法:只为首屏必需的运行时(vue / vue-router / pinia / pinyin-pro)建 `vendor-core`,其余 `return undefined` 让 Rollup 跟随按需 chunk;改完看 `dist/index.html` 的 preload 列表验证。
 22. **scoped 样式里深色覆盖不要写 `:global(html.dark) .xxx`**:Vue 会把它编译成裸 `html.dark{…}`,把后面的选择器整个丢掉 —— 等于直接给 `<html>` 元素设背景/边框,污染全局。正确写法是 `html.dark .xxx`(编译成 `html.dark .xxx[data-v-x]`),参考 `DesktopHome.vue` 的 `html.dark .ctx`。验证方法:`grep -o "html\.dark[^{]*{" dist/assets/xxx.css` 看 `.xxx` 是否还在。
+23. **`innerHTML` 动态生成的节点拿不到 scoped 的 `data-v` 属性**:样式全部失效、只剩继承色(表现为「语法高亮不生效」)。必须写成 `.父容器 :deep(.子元素)`;`::before` / `::after` 也一样要放进 `:deep()` 里。已在 `JsonViewer.vue` 踩过。
+24. **`v-if` / `v-else-if` 切换出来的元素,在同一个 tick 里 `ref` 还是 `null`**:解析完立刻 `renderTarget()` 会拿到旧 DOM 或 null(表现为「点了示例结果区是空的」)。要 `void nextTick(renderTarget)`。
 
 ---
 
@@ -434,6 +459,15 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 修真实 bug:`onFileChange` 先取 `input.files` 再 `input.value = ''` —— FileList 是活引用,清空后长度归零,图片永远加载不进来;改为 `Array.from` 快照(与第 7 节第 14 条同一个坑)。
 - 健壮性:`setPointerCapture` 包 try/catch(合成事件无活动指针会抛);剪贴板写入加 4s 超时兜底(无用户手势时 Promise 会一直挂起)。
 - 校验:135 布局逐个点开验重叠/越界/数量全通过;导出像素用 `sips` 转 PNG + 纯 Python zlib 解码核对(4 格 2400×2400、16 格 2400×1350、色块位置全对);`type-check` 0 错误、`build` 通过。
+
+### 2026-11-12 · JSON 查看器对齐 json.cn(`04c14e7`)
+- 用户要求「样式和功能跟 json.cn/jsononline 保持一致」,并点名两处:① 解析结果左上角要有多个功能按钮;② 选中图片地址要显示小图。
+- 先抓取参考站 HTML / CSS / JS(`json-format.js` 的 `JSONFormat`、`jf1.js` 的工具条逻辑)确认事实:token 颜色 `#92278f/#3ab54a/#25aae2/#f98280/#f1592a/#61D2D6`、4 空格缩进、折叠摘要 `Object{...}`/`Array[n]`、工具条 9 个按钮 + 保留转义勾选框 + 全屏、编辑结果区会回写左侧输入框、URL 包 `<a class="json_link">`。
+- 重写 `JsonViewer.vue`:双栏 + 可拖动分隔条 + 双侧行号、工具条、语法着色、折叠/展开全部、键值 `contenteditable`、压缩/转 XML/保存/复制/示例/全屏/保留转义、XML 自动转 JSON、大整数保护、错误定位。
+- **图片小图预览是用户要的增强**(参考站本身没有):图片地址点击弹 260px 卡片,含「打开原图」,点空白/Esc 关闭。
+- 删除 `src/components/JsonTreeNode.vue`(旧的递归树组件已无引用,`components.d.ts` 自动同步)。
+- 踩坑记入第 7 节第 23、24 条(`innerHTML` 需要 `:deep()`;`v-if` 切换后要等 `nextTick`)。
+- 校验:着色/折叠/行号/压缩/XML/保存/复制/图片预览/编辑回写/错误/深色/全屏全部实测通过;`type-check` 0 错误、`build` 通过。
 
 ---
 

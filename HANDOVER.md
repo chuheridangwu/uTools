@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `fd313bd` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `b44ba7d` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,7 +95,19 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`fd313bd`:**修复 CI 构建失败(vue-tsc 模板类型误判)**。
+`b44ba7d`:**默认桌面清单按用户指定调整 + 二维码生成/解析合并**。
+- 默认桌面(`config/appCatalog.ts` 的 `DEFAULT_DESKTOP_IDS`)改为用户指定的 15 项与顺序:本地媒体浏览器、局域网文件直传、JSON 查看器、颜色工具、便签墙、二维码生成、时间戳转换、翻译工具、IP 归属地查询、待办清单、URL 参数解析、编码解码、配色方案、JSON 生成器、本地漫画阅读器(均以 `CATALOG_MAP.has()` 过滤,键名逐个核对存在且唯一)。
+  - 注意:只影响首次打开/重置布局;已有本地状态(`utools_desktop-state`)不会被覆盖,老用户可在「设置 → 重置布局」拿到新默认。
+- **二维码生成 + 解析合并为一个应用**(`src/views/QrcodeTool.vue`,路由 `/qrcode-tool`,名称仍为「二维码生成」,内含「生成二维码 / 解析二维码」两个 tab):
+  - 删除独立应用 `qr-decode`(`tools.ts` 条目 + `src/views/QrDecode.vue`),目录总数 108 → **107**(79 桌面 + **28** 路由),图片工具 12 → 11;
+  - 生成参数对齐草料 `cli.im/text/other`:内容类型模板(文本/网址/电话/短信/邮件/WiFi)、码制(仅 QR,界面上标注汉信码/PDF417/Data Matrix 不支持)、容错率(L 7% / M 15% / Q 25% / H 30%)、尺寸(300/400/600/自定义 128–1024)、码边距(0–10 个色块,直接作为 `qrcode` 的 `margin`)、前景/背景色、中心图片与大小(有图自动 H 级);
+  - 下载新增 **SVG**(矢量,不含中心图片,会提示),PNG 仍按当前设置重新生成后导出;
+  - 解析沿用 jsQR + 3 级放大重试,新增「打开链接」(仅 http/https 时可用);
+  - 依赖未新增:仍只用 `qrcode` 与 `jsqr`(原本就有的懒加载依赖)。
+- 校验:`type-check` 0 错误、`build` 通过(`QrcodeTool` 159.64KB / gzip 58.02KB,含 jsqr+qrcode);dev server 下 `/qrcode-tool` 返回 200、模板与 `appCatalog` 模块均正常编译,默认清单顺序已从编译产物核对。
+- 说明:用户提供的参数截图本机无法读取(模型不支持图片输入),参数以 `cli.im/text/other` 页面上可见的项为准;若截图还有额外参数需要补,告知即可。
+
+上一次:`fd313bd`:**修复 CI 构建失败(vue-tsc 模板类型误判)**。详见第 8 节。
 - 现象:GitHub 推送后 Cloudflare Pages 构建失败,`vue-tsc --noEmit` 在 `src/views/apps/TotpAuth.vue` 第 242/247/250/253/256/263/266/274 行报 `TS2339: Property 'value' does not exist on type '{ visible, label, issuer, secret, digits, period, algo, uri }'`;本地同样命令却 0 错误。
 - 定位过程:
   - 先确认不是我们的代码逻辑问题:本地/干净克隆 `1d0e68c` 均通过;远程 main 已被新提交 `1725481 重置package-lock.json` 覆盖(由另一侧推送),该提交把 `element-plus` 从 2.14.7 提到 **2.14.8**、`vue` 3.5.44→3.5.45、`vue-tsc`/`@vue/language-core` 3.3.13→3.3.14。
@@ -365,6 +377,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 修复 `fd313bd`:`TotpAuth.vue` 的该 placeholder 提为 `URI_PLACEHOLDER` 常量 + `:placeholder` 绑定,并加注释说明;不改文案。
 - 验证:本地 type-check/build 通过;干净克隆 `fd313bd` + `npm ci` 的 `npm run build` 通过(等价 CI)。已推送,远程 `origin/main` = `fd313bd`。
 - 备注:全仓库另有 6 处 `placeholder` 含 `://`,当前不报错;若后续出现同类报错,按同样方式改为绑定表达式即可。
+
+### 2026-11-12 · 默认桌面清单调整 + 二维码生成/解析合并(功能变更)
+- 默认桌面按用户指定改为 15 项:`local-media`、`lan-transfer`、`json-viewer`、`color-tool`、`sticky-notes`、`qrcode-tool`、`timestamp`、`translator`、`ip-lookup`、`todo-list`、`url-parser`、`encode-decode`、`palette-generator`、`json-generator`、`local-manga`(commit `b44ba7d`)。
+  - 仅改 `DEFAULT_DESKTOP_IDS`;已存在 `utools_desktop-state` 的用户不受影响,设置页「重置布局」可套用新默认。
+  - 逐键核对:15 个 key 在 `tools.ts` / `desktopApps.ts` 中各存在且唯一。
+- 二维码合并:删除 `qr-decode` 路由与 `src/views/QrDecode.vue`,把解析并入 `QrcodeTool.vue` 的第二个 tab;目录 108 → 107(79 + 28),图片工具 12 → 11;README / HANDOVER 计数同步。
+- 生成参数对齐 `cli.im/text/other`:内容模板(文本/网址/电话/短信/邮件/WiFi)、码制(仅 QR + 不支持说明)、容错率显示 7%/15%/25%/30%、尺寸预设 300/400/600/自定义、边距按「色块」0–10、前景/背景色、Logo 与大小;新增 SVG 导出(不含 Logo,有提示),PNG 仍按当前设置重生成。
+- 解析保留 jsQR 三级放大重试,新增「打开链接」(仅 http/https)。
+- 校验:`type-check` 0 错误、`build` 通过(`QrcodeTool` 159.64KB / gzip 58.02KB);dev server `/qrcode-tool` 200,模板与默认清单模块编译正常,顺序已从产物核对。
+- 限制:参数截图无法读取(模型不支持图片输入),以参考页可见参数为准;若截图有额外项,后续再补。
 
 ---
 

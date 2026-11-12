@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `b44ba7d` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `36d2112` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,7 +95,16 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`b44ba7d`:**默认桌面清单按用户指定调整 + 二维码生成/解析合并**。
+**长图拼接改为「好拼」风格三栏布局**(`src/views/ImageStitch.vue`,路由 `/image-stitch`),功能与旧版完全一致。
+- 界面参考 `img.ops-coffee.com/photo/`(好拼):左栏「拼图设置」(拼接方向 / 选择图片)+「图片顺序」列表,中栏画布工具条 + 预览区,右栏「样式调整」(间距 / 限宽 / 对齐 / 背景色)与「导出设置」(下载长图)。
+- 设计令牌照抄好拼:主色 `#0052cc`、激活底色 `#e9f2ff`、画布底 `#f4f5f7`、面板 `#fff`、边框 `#dfe1e6`、文字 `#172b4d` / `#42526e` / `#6b7f99`、工具条 `#f8f9fa` + `#dee2e6` 圆角 12;深色模式用 `html.dark .st-app` 映射另一套变量。
+- 功能项一个没少:竖向 / 横向、间距 0–100、竖向限宽 240–3000、横向对齐、背景色、多选上传、**拖拽导入**、上移 / 下移 / 单张移除 / 清空、实时预览(显示 `宽 × 高 px`)、导出 PNG。
+- 顺手修掉两个旧问题:① 缩略图原来复用 `it.img.src`,而 `loadImage()` 在 `onload` 里已 `revokeObjectURL`,新建 `<img>` 加载会失败 → 改为每张单独 `URL.createObjectURL(f)` 并在移除 / 清空 / 卸载时释放;② 旧 `watch([items.value, …])` 拿的是数组快照,`items.value = []` 之后失去响应 → 改为显式 `render()` + 只对设置项 `watch`。
+- 加载改为**串行** `await`,保证拼接顺序 = 用户选择顺序(旧实现 `forEach(async …)` 会按解码完成先后乱序)。
+- 实测(dev server + 真实 DOM 操作,3 张 300×200 / 200×300 / 400×150 的图):竖向默认 400×1037、横向 745×150、间距改 30 → 785×150、背景改黑后间隙像素 `#000000`、上移后首像素由红变绿且顺序变 B/A/C、移除第 3 张 → 463×200、清空后画布隐藏 + 占位出现 + 下载禁用;`type-check` 0 错误、`build` 通过(`ImageStitch` 7.86KB / gzip 3.29KB)。
+- 踩坑:scoped 样式里写 `:global(html.dark) .st-app` 会被编译成裸 `html.dark{…}`,把 `.st-app` 丢掉、等于给 `<html>` 设背景和边框 → 必须写成 `html.dark .st-app`(与 `DesktopHome.vue` 的 `html.dark .ctx` 一致)。
+
+上一次:`b44ba7d`:**默认桌面清单按用户指定调整 + 二维码生成/解析合并**。
 - 默认桌面(`config/appCatalog.ts` 的 `DEFAULT_DESKTOP_IDS`)改为用户指定的 15 项与顺序:本地媒体浏览器、局域网文件直传、JSON 查看器、颜色工具、便签墙、二维码生成、时间戳转换、翻译工具、IP 归属地查询、待办清单、URL 参数解析、编码解码、配色方案、JSON 生成器、本地漫画阅读器(均以 `CATALOG_MAP.has()` 过滤,键名逐个核对存在且唯一)。
   - 注意:只影响首次打开/重置布局;已有本地状态(`utools_desktop-state`)不会被覆盖,老用户可在「设置 → 重置布局」拿到新默认。
 - **二维码生成 + 解析合并为一个应用**(`src/views/QrcodeTool.vue`,路由 `/qrcode-tool`,名称仍为「二维码生成」,内含「生成二维码 / 解析二维码」两个 tab):
@@ -242,6 +251,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 19. **headless Chrome 截图会挂死**:`--user-data-dir=<新目录>` + `--no-proxy-server` 组合会卡十几分钟;可靠写法是不带这两个参数、`localhost:<port>`、`--virtual-time-budget=6000`,并用 `subprocess.run(..., timeout=75)` 兜底。**macOS 没有 `timeout` 命令**。
 20. **运行时校验目录时 esbuild 遇到 `.vue` 动态 import 会报 `No loader is configured for ".vue"`**:加 stub 插件,或直接正则抽注册表 `name:`;Pinia 运行时测试要把 `pinia`/`vue`/`vue-demi` 标 external。
 21. **`manualChunks` 不要把全部 `node_modules` 归到一个 `vendor`**:只被懒加载视图使用的重库(jsPDF、mqtt、papaparse、cron-parser)会被塞进首屏 chunk 一起预加载。正确做法:只为首屏必需的运行时(vue / vue-router / pinia / pinyin-pro)建 `vendor-core`,其余 `return undefined` 让 Rollup 跟随按需 chunk;改完看 `dist/index.html` 的 preload 列表验证。
+22. **scoped 样式里深色覆盖不要写 `:global(html.dark) .xxx`**:Vue 会把它编译成裸 `html.dark{…}`,把后面的选择器整个丢掉 —— 等于直接给 `<html>` 元素设背景/边框,污染全局。正确写法是 `html.dark .xxx`(编译成 `html.dark .xxx[data-v-x]`),参考 `DesktopHome.vue` 的 `html.dark .ctx`。验证方法:`grep -o "html\.dark[^{]*{" dist/assets/xxx.css` 看 `.xxx` 是否还在。
 
 ---
 
@@ -393,6 +403,13 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 用户明确:「B类的这些都不需要做了」→ PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件 / 真云同步 全部不做,第 6 节 B 已改为「不要再提议」。
 - 同时更正遗留表述:第 9 节原写「是否接 TURN 需拍板」,实际早已决定保持现状(不接 TURN,跨网失败走现有提示 + 6 位配对码)。
 - 无源码改动,仅 `HANDOVER.md`。
+
+### 2026-11-12 · 长图拼接改为「好拼」风格三栏布局(界面重构)
+- 参考 `img.ops-coffee.com/photo/`(好拼)重做 `src/views/ImageStitch.vue` 的界面:左栏设置 + 图片顺序、中栏画布工具条 + 预览、右栏样式与导出;设计令牌(主色 `#0052cc`、`#e9f2ff` 激活态、`#f4f5f7` 画布底、`#dfe1e6` 边框)直接对齐该站,深色模式另做映射。
+- **功能保持一致**,未增删能力;顺带修 3 个旧缺陷:缩略图复用已被 `revokeObjectURL` 的 URL(必然加载失败)、`watch(items.value)` 快照导致清空后不重绘、`forEach(async …)` 导致拼接顺序随解码完成时间乱序(改串行 await)。
+- 新增拖拽导入(整块区域可拖入),`URL.createObjectURL` 在移除 / 清空 / 卸载时释放。
+- 实测:竖向 400×1037 / 横向 745×150 / 间距 30 → 785×150 / 背景色进像素 / 上移换序 / 移除 → 463×200 / 清空复位,均符合预期;`type-check` 0 错误、`build` 通过。
+- 踩坑记入第 7 节第 22 条(`:global(html.dark)` 会丢选择器)。
 
 ---
 

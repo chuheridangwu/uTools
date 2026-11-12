@@ -2,17 +2,21 @@
 /**
  * 长图拼接
  * 多张图片按顺序拼接为一张长图:横向或纵向,可设定 间距/对齐/背景色/最大宽度。
+ * 界面参考「好拼」(img.ops-coffee.com)的三栏布局:左侧拼接设置 + 图片顺序、
+ * 中间画布预览与工具条、右侧样式调整与导出;功能与旧版完全一致,全部在本地完成。
  */
-import type { UploadFile } from 'element-plus'
-import { ref, computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { ArrowDown, ArrowUp, Close, Delete, Download, Plus } from '@element-plus/icons-vue'
 import ToolPage from '@/components/ToolPage.vue'
 import { downloadBlob } from '@/utils/common'
-import { canvasToBlob, loadImage, renameWithExt } from '@/utils/image'
+import { canvasToBlob, loadImage } from '@/utils/image'
 
 interface Item {
   file: File
   img: HTMLImageElement
+  /** 缩略图用的对象 URL(loadImage 内部的 URL 已释放,不能复用) */
+  url: string
 }
 
 const items = ref<Item[]>([])
@@ -23,17 +27,36 @@ const bgColor = ref('#ffffff')
 const maxWidth = ref(1080)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const fileRef = ref<HTMLInputElement | null>(null)
 
-function onFiles(files: FileList | File[]) {
-  Array.from(files)
-    .filter((f) => f.type.startsWith('image/'))
-    .forEach(async (f) => {
-      try {
-        items.value.push({ file: f, img: await loadImage(f) })
-      } catch {
-        ElMessage.warning(`${f.name} 加载失败`)
-      }
-    })
+/* ------------------------------ 加入 / 排序 ------------------------------ */
+
+/** 逐张加载,保持用户选择的顺序;失败的单张跳过并提示 */
+async function addFiles(files: FileList | File[]) {
+  const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+  if (!list.length) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  for (const f of list) {
+    try {
+      const img = await loadImage(f)
+      items.value.push({ file: f, img, url: URL.createObjectURL(f) })
+      render()
+    } catch {
+      ElMessage.warning(`${f.name} 加载失败`)
+    }
+  }
+}
+
+function pick() {
+  fileRef.value?.click()
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files?.length) void addFiles(input.files)
+  input.value = ''
 }
 
 function move(i: number, d: -1 | 1) {
@@ -43,11 +66,41 @@ function move(i: number, d: -1 | 1) {
   const t = arr[i]
   arr[i] = arr[j]
   arr[j] = t
+  render()
+}
+
+function removeAt(i: number) {
+  const [gone] = items.value.splice(i, 1)
+  if (gone) URL.revokeObjectURL(gone.url)
+  render()
 }
 
 function clearAll() {
+  items.value.forEach((it) => URL.revokeObjectURL(it.url))
   items.value = []
+  render()
 }
+
+/* ------------------------------ 拖拽导入 ------------------------------ */
+
+const dragDepth = ref(0)
+const dragging = computed(() => dragDepth.value > 0)
+
+function onDragEnter() {
+  dragDepth.value += 1
+}
+
+function onDragLeave() {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+
+function onDrop(e: DragEvent) {
+  dragDepth.value = 0
+  const files = e.dataTransfer?.files
+  if (files?.length) void addFiles(files)
+}
+
+/* ------------------------------ 计算 / 绘制 ------------------------------ */
 
 /** 根据参数计算目标尺寸 */
 const outSize = computed(() => {
@@ -66,7 +119,12 @@ const outSize = computed(() => {
 
 function render() {
   const c = canvasRef.value
-  if (!c || !items.value.length) return
+  if (!c) return
+  if (!items.value.length) {
+    c.width = 0
+    c.height = 0
+    return
+  }
   const { w, h } = outSize.value
   c.width = w
   c.height = h
@@ -91,99 +149,551 @@ function render() {
   }
 }
 
+watch([direction, gap, alignment, bgColor, maxWidth], () => render())
+
+/* ------------------------------ 导出 ------------------------------ */
+
 /** 拼接并下载 */
 async function download() {
   const c = canvasRef.value
-  if (!c || !items.value.length) return
-  const blob = await canvasToBlob(c, 'image/png')
-  downloadBlob(blob, `stitch-${Date.now()}.png`)
+  if (!c || !items.value.length) {
+    ElMessage.warning('请先加入图片')
+    return
+  }
+  try {
+    const blob = await canvasToBlob(c, 'image/png')
+    downloadBlob(blob, `stitch-${Date.now()}.png`)
+    ElMessage.success('已导出长图')
+  } catch (e) {
+    ElMessage.error(`导出失败: ${(e as Error).message}`)
+  }
 }
 
-watch([items.value, direction, gap, alignment, bgColor, maxWidth], () => render(), { deep: true })
-
-/** on-change 统一包装(模板内不便写泛型注解) */
-const onUploadChange = (f: UploadFile) => { const raw = f.raw; if (!raw) return; onFiles([raw as File]) }
+onBeforeUnmount(() => {
+  items.value.forEach((it) => URL.revokeObjectURL(it.url))
+})
 </script>
 
 <template>
   <ToolPage>
     <template #title>长图拼接</template>
-    <template #desc>多张图片按顺序拼接成一张长图,支持纵向/横向、间距、对齐与背景色,实时预览。</template>
+    <template #desc>
+      多张图片按顺序拼接成一张长图,支持纵向 / 横向、间距、对齐与背景色,实时预览;所有处理都在本机完成。
+    </template>
 
-    <el-card shadow="never">
-      <template #header>
-        <div class="head">
-          <span>加入图片(按列表顺序拼接)</span>
-          <el-button v-if="items.length" size="small" @click="clearAll">清空</el-button>
-        </div>
-      </template>
-      <el-upload drag multiple :auto-upload="false" :show-file-list="false" accept="image/*" :on-change="onUploadChange">
-        <div class="drop">拖入多张图片</div>
-      </el-upload>
-    </el-card>
-
-    <el-row v-if="items.length" :gutter="16" class="mt12">
-      <el-col :span="10">
-        <el-card shadow="never">
-          <template #header>拼接设置</template>
-          <div class="form">
-            <div class="lab">方向</div>
-            <el-radio-group v-model="direction" size="small">
-              <el-radio-button value="vertical">纵向(长条)</el-radio-button>
-              <el-radio-button value="horizontal">横向(宽幅)</el-radio-button>
-            </el-radio-group>
-            <div class="lab">间距 {{ gap }} px</div>
-            <el-slider v-model="gap" :min="0" :max="100" size="small" />
-            <div class="lab" v-if="direction === 'vertical'">限制宽度 {{ maxWidth }} px</div>
-            <el-slider v-if="direction === 'vertical'" v-model="maxWidth" :min="240" :max="3000" size="small" />
-            <div class="lab" v-if="direction === 'horizontal'">对齐</div>
-            <el-radio-group v-if="direction === 'horizontal'" v-model="alignment" size="small">
-              <el-radio-button value="start">顶对齐</el-radio-button>
-              <el-radio-button value="center">居中</el-radio-button>
-              <el-radio-button value="end">底对齐</el-radio-button>
-            </el-radio-group>
-            <div class="lab">背景色</div>
-            <el-color-picker v-model="bgColor" size="small" />
+    <div
+      class="st-app"
+      :class="{ 'is-dragging': dragging }"
+      @dragenter.prevent="onDragEnter"
+      @dragover.prevent
+      @dragleave.prevent="onDragLeave"
+      @drop.prevent="onDrop"
+    >
+      <!-- 左栏:拼接设置 + 图片顺序 -->
+      <aside class="st-side st-left">
+        <div class="st-block">
+          <h3 class="st-title">拼图设置</h3>
+          <div class="st-label">拼接方向</div>
+          <div class="st-seg">
+            <button :class="{ active: direction === 'vertical' }" @click="direction = 'vertical'">竖向</button>
+            <button :class="{ active: direction === 'horizontal' }" @click="direction = 'horizontal'">横向</button>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="14">
-        <el-card shadow="never" :body-style="{ padding: '0' }">
-          <template #header>
-            <div class="head">
-              <span>预览({{ outSize.w }}×{{ outSize.h }})</span>
-              <el-button type="primary" size="small" @click="download">下载长图</el-button>
+
+          <div class="st-label">选择图片</div>
+          <button class="st-btn ghost full" @click="pick">
+            <el-icon><Plus /></el-icon>
+            <span>点击选择或拖拽图片</span>
+          </button>
+          <input ref="fileRef" type="file" accept="image/*" multiple hidden @change="onFileChange" />
+          <p class="st-hint">支持一次选择多张,按选择顺序拼接。</p>
+        </div>
+
+        <div v-if="items.length" class="st-block st-grow">
+          <h3 class="st-title">图片顺序<span class="st-count">{{ items.length }}</span></h3>
+          <ul class="st-list">
+            <li v-for="(it, i) in items" :key="it.url" class="st-item">
+              <img :src="it.url" :alt="it.file.name" class="st-thumb" />
+              <div class="st-item-main">
+                <span class="st-name" :title="it.file.name">{{ it.file.name }}</span>
+                <span class="st-meta">{{ it.img.naturalWidth }} × {{ it.img.naturalHeight }}</span>
+              </div>
+              <div class="st-item-acts">
+                <button title="上移" :disabled="i === 0" @click="move(i, -1)">
+                  <el-icon><ArrowUp /></el-icon>
+                </button>
+                <button title="下移" :disabled="i === items.length - 1" @click="move(i, 1)">
+                  <el-icon><ArrowDown /></el-icon>
+                </button>
+                <button title="移除" class="rm" @click="removeAt(i)">
+                  <el-icon><Close /></el-icon>
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- 中栏:工具条 + 画布 -->
+      <main class="st-center">
+        <div class="st-toolbar">
+          <span class="st-size">
+            {{ items.length ? `${outSize.w} × ${outSize.h} px` : '尚未加入图片' }}
+          </span>
+          <button class="st-btn ghost" :disabled="!items.length" @click="clearAll">
+            <el-icon><Delete /></el-icon>
+            <span>清空</span>
+          </button>
+        </div>
+
+        <div class="st-viewport">
+          <canvas v-show="items.length" ref="canvasRef" class="st-canvas" />
+          <button v-if="!items.length" class="st-placeholder" @click="pick">
+            <el-icon :size="28"><Plus /></el-icon>
+            <span>点击选择图片</span>
+          </button>
+        </div>
+      </main>
+
+      <!-- 右栏:样式调整 + 导出 -->
+      <aside class="st-side st-right">
+        <section class="st-block">
+          <h3 class="st-title">样式调整</h3>
+
+          <div class="st-field">
+            <label>间距 <b>{{ gap }}</b> px</label>
+            <input v-model.number="gap" type="range" min="0" max="100" step="1" />
+          </div>
+
+          <div v-if="direction === 'vertical'" class="st-field">
+            <label>限制宽度 <b>{{ maxWidth }}</b> px</label>
+            <input v-model.number="maxWidth" type="range" min="240" max="3000" step="20" />
+          </div>
+
+          <div v-else class="st-field">
+            <label>对齐方式</label>
+            <div class="st-seg">
+              <button :class="{ active: alignment === 'start' }" @click="alignment = 'start'">顶对齐</button>
+              <button :class="{ active: alignment === 'center' }" @click="alignment = 'center'">居中</button>
+              <button :class="{ active: alignment === 'end' }" @click="alignment = 'end'">底对齐</button>
             </div>
-          </template>
-          <div class="stage">
-            <canvas ref="canvasRef"></canvas>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
 
-    <div v-if="items.length" class="mt12 thumbs">
-      <div v-for="(it, i) in items" :key="i" class="thumb">
-        <img :src="it.img.src" :alt="it.file.name" />
-        <div class="bar">
-          <el-button size="small" text :disabled="i === 0" @click="move(i, -1)">上移</el-button>
-          <el-button size="small" text :disabled="i === items.length - 1" @click="move(i, 1)">下移</el-button>
-        </div>
-      </div>
+          <div class="st-field">
+            <label>背景颜色</label>
+            <div class="st-color">
+              <input v-model="bgColor" type="color" />
+              <span>{{ bgColor.toUpperCase() }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="st-block">
+          <h3 class="st-title">导出设置</h3>
+          <p class="st-hint">导出为 PNG,尺寸与上方预览一致。</p>
+          <button class="st-btn primary full" :disabled="!items.length" @click="download">
+            <el-icon><Download /></el-icon>
+            <span>下载长图</span>
+          </button>
+        </section>
+      </aside>
+
+      <div v-if="dragging" class="st-drop-tip">松开即可加入图片</div>
     </div>
   </ToolPage>
 </template>
 
 <style scoped>
-.mt12 { margin-top: 12px; }
-.drop { padding: 24px 0; color: var(--el-text-color-secondary); font-size: 13px; }
-.head { display: flex; justify-content: space-between; align-items: center; }
-.form { display: flex; flex-direction: column; gap: 4px; }
-.lab { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 8px; }
-.stage { max-height: 460px; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 12px; background: var(--el-fill-color-lighter); }
-.stage canvas { max-width: 100%; }
-.thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
-.thumb { width: 96px; text-align: center; }
-.thumb img { width: 96px; height: 72px; object-fit: cover; border-radius: 6px; }
-.bar { display: flex; justify-content: center; }
+/* 设计令牌取自「好拼」(img.ops-coffee.com),深色模式做对应映射 */
+.st-app {
+  --st-bg: #f4f5f7;
+  --st-panel: #ffffff;
+  --st-text: #172b4d;
+  --st-text2: #42526e;
+  --st-muted: #6b7f99;
+  --st-border: #dfe1e6;
+  --st-accent: #0052cc;
+  --st-accent-soft: #e9f2ff;
+  --st-soft: #fafbfc;
+
+  position: relative;
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr) 244px;
+  height: clamp(400px, calc(100vh - 330px), 640px);
+  border: 1px solid var(--st-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--st-bg);
+  color: var(--st-text2);
+  font-size: 13px;
+}
+html.dark .st-app {
+  --st-bg: #0f1319;
+  --st-panel: #171c23;
+  --st-text: #e6edf3;
+  --st-text2: #b9c4d0;
+  --st-muted: #8b98a5;
+  --st-border: #2a323c;
+  --st-accent: #4c9aff;
+  --st-accent-soft: #1b2a41;
+  --st-soft: #1f252d;
+}
+.st-app.is-dragging {
+  outline: 2px dashed var(--st-accent);
+  outline-offset: -6px;
+}
+
+/* 左右侧栏 */
+.st-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--st-panel);
+}
+.st-left {
+  border-right: 1px solid var(--st-border);
+}
+.st-right {
+  border-left: 1px solid var(--st-border);
+}
+.st-block {
+  padding: 16px;
+}
+.st-block + .st-block {
+  border-top: 1px solid var(--st-border);
+}
+.st-grow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 面板小标题 */
+.st-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--st-border);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--st-text);
+}
+.st-count {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--st-accent-soft);
+  color: var(--st-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.st-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--st-text2);
+}
+
+/* 分段按钮(方向 / 对齐) */
+.st-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.st-seg button {
+  padding: 7px 4px;
+  border: 1px solid var(--st-border);
+  border-radius: 6px;
+  background: var(--st-soft);
+  color: var(--st-text2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.st-seg button:hover {
+  border-color: #c1c7d0;
+}
+.st-seg button.active {
+  background: var(--st-accent-soft);
+  color: var(--st-accent);
+  border-color: var(--st-accent);
+  font-weight: 600;
+}
+
+/* 通用按钮 */
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-out;
+}
+.st-btn.full {
+  width: 100%;
+}
+.st-btn.ghost {
+  background: var(--st-soft);
+  color: var(--st-text2);
+  border-color: var(--st-border);
+}
+.st-btn.ghost:hover:not(:disabled) {
+  background: var(--st-bg);
+  border-color: #c1c7d0;
+}
+.st-btn.primary {
+  background: var(--st-accent);
+  color: #fff;
+  border-color: var(--st-accent);
+}
+.st-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.st-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.st-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--st-muted);
+}
+
+/* 图片顺序列表 */
+.st-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.st-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--st-border);
+  border-radius: 8px;
+  background: var(--st-soft);
+}
+.st-thumb {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--st-bg);
+}
+.st-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.st-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--st-text);
+}
+.st-meta {
+  font-size: 11px;
+  color: var(--st-muted);
+}
+.st-item-acts {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.st-item-acts button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--st-muted);
+  cursor: pointer;
+}
+.st-item-acts button:hover:not(:disabled) {
+  background: var(--st-panel);
+  border-color: var(--st-border);
+  color: var(--st-text);
+}
+.st-item-acts button.rm:hover:not(:disabled) {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.st-item-acts button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 中栏 */
+.st-center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  padding: 14px;
+  overflow: hidden;
+}
+.st-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  background: #f8f9fa;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 5%);
+}
+html.dark .st-toolbar {
+  border-color: var(--st-border);
+  background: var(--st-panel);
+}
+.st-size {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--st-text);
+}
+.st-viewport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 8px;
+}
+.st-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 4px 8px -2px rgb(9 30 66 / 25%), 0 0 1px rgb(9 30 66 / 20%);
+}
+.st-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 250px;
+  height: 150px;
+  border: 2px dashed var(--st-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--st-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.st-placeholder:hover {
+  border-color: var(--st-accent);
+  background: var(--st-soft);
+  color: var(--st-accent);
+}
+
+/* 右栏字段 */
+.st-field {
+  margin-bottom: 16px;
+}
+.st-field > label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--st-text2);
+}
+.st-field > label b {
+  color: var(--st-text);
+  font-weight: 600;
+}
+.st-field input[type='range'] {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--st-border);
+  accent-color: var(--st-accent);
+  cursor: pointer;
+}
+.st-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-color input[type='color'] {
+  width: 34px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--st-border);
+  border-radius: 6px;
+  background: var(--st-soft);
+  cursor: pointer;
+}
+.st-color span {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--st-text2);
+}
+
+/* 拖拽提示 */
+.st-drop-tip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--st-panel) 82%, transparent);
+  color: var(--st-accent);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* 窄屏(直接访问路由 / 小窗口)退化为单列 */
+@media (max-width: 900px) {
+  .st-app {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .st-center {
+    order: -1;
+    height: 320px;
+  }
+  .st-left {
+    border-right: none;
+    border-top: 1px solid var(--st-border);
+  }
+  .st-right {
+    border-left: none;
+    border-top: 1px solid var(--st-border);
+  }
+}
 </style>

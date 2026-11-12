@@ -15,8 +15,8 @@
  */
 import type { Component } from 'vue'
 import { pinyin } from 'pinyin-pro'
-import { TOOLS } from '@/config/tools'
-import { DESKTOP_APPS } from '@/config/desktopApps'
+import { TOOLS, TOOL_MAP } from '@/config/tools'
+import { DESKTOP_APPS, APP_MAP } from '@/config/desktopApps'
 
 /* ------------------------------------------------------------------ *
  * 排除清单与分类
@@ -265,9 +265,10 @@ export const DEFAULT_DOCK_IDS: string[] = ['clipboard', 'noise-mixer', 'lan-tran
   .filter((k) => CATALOG_MAP.has(k))
 
 /**
- * 以全屏窗口打开的应用:工作区 / 画布 / 双栏 / 阅读类,空间越大越好用
- * (对齐找Tab 的全屏二级页观感);其余应用仍以 1100px 浮层窗口打开。
- * AppWindow.vue 渲染时查这份清单。
+ * 以整页路由(独立路径)打开的应用:工作区 / 画布 / 阅读类,对齐找Tab 的
+ * /json-format 独立二级页——点击后 router.push 到路径,浏览器返回即回原页面;
+ * 其余应用仍以 1100px 浮层窗口打开。路由工具用 tools.ts 的 path,
+ * 无路由的桌面应用挂在 /app/<key> 下(见 router/index.ts)。
  */
 export const FULLSCREEN_APPS = new Set<string>([
   'local-manga',      // 本地漫画阅读器
@@ -283,6 +284,15 @@ export const FULLSCREEN_APPS = new Set<string>([
   'drawing-board',    // 画板(画布)
   'quadrant-notes',   // 四象限笔记(全屏矩阵)
 ])
+
+/** 整页打开应用的路径;非整页应用返回 null */
+export function pagePathOf(key: string): string | null {
+  if (!FULLSCREEN_APPS.has(key)) return null
+  const tool = TOOL_MAP.get(key)
+  if (tool?.path) return tool.path
+  if (APP_MAP.has(key)) return `/app/${key}`
+  return null
+}
 
 /* ------------------------------------------------------------------ *
  * 查询辅助

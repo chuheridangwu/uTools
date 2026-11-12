@@ -8,9 +8,9 @@
 ## 0. 30 秒速览
 
 - **这是什么**:Vue 3 + TypeScript + Vite + Element Plus,「找Tab(https://www.zhaotab.com/)」风格的桌面化在线工具箱。
-- **两个形态**:有路由的「工具」(`config/tools.ts`,28 个,走 `<router-view>`)与无路由的「桌面应用」(`config/desktopApps.ts`,81 条注册、**2 条排除** → 79 个,以浮层 `AppWindow` 打开)。
+- **两个形态**:有路由的「工具」(`config/tools.ts`,28 个)与无路由的「桌面应用」(`config/desktopApps.ts`,81 条注册、**2 条排除** → 79 个)。其中 **12 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
 - **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**107 条**),商店、桌面、搜索、命令面板全部只认这一份。
-- **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换。
+- **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换;整页应用(FULLSCREEN_APPS 12 个)以独立路径二级页打开(见第 8 节 2026-11-12)。
 - **没有后端**:所有数据在 localStorage,「云同步」等价实现为导出 / 导入 JSON。
 - **不做**:游戏中心、3D 魔方、电台随身听、公众号排版;商店分类「游戏」「阅读」也不做(见 `EXCLUDED_KEYS`)。
 
@@ -95,7 +95,7 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-**工作区类应用全屏窗口打开**(`appCatalog.ts` 的 `FULLSCREEN_APPS` + `AppWindow.vue` 全屏形态,共 12 个应用),首页与其他应用浮层不变,详见第 8 节 2026-11-12 条目。
+**整页应用改为换路径打开(对齐找Tab 二级页模型)**:12 个 `FULLSCREEN_APPS` 点击后 `router.push` 到独立路径(工具用 path、无路由桌面应用新增 `/app/<key>` 路由),`App.vue` 桌面模式下命中路径时渲染独立二级页(左上角浮动返回按钮,有历史来路走 `history.back`,直达深链接回桌面),浏览器返回回到来源页(商店/桌面);浮层窗口的全屏形态代码已删除。详见第 8 节 2026-11-12 条目。
 
 **商店打开应用后「返回」回到商店,对齐找Tab 行为**(见第 8 节 2026-11-12 条目):`StorePage.openNow` 不再关闭商店、`panel` 改 `push` 留历史栈、Esc 先关应用窗口。
 
@@ -213,7 +213,7 @@ src/
 - **目录是静态的,状态只存「用户选了哪些 key」**。所以新增应用后,老用户刷新就能在商店看到,不会出现一次性快照永不过期的问题。
 - **目录三态**:已添加 `desktopIds` / 已隐藏 `hiddenIds`(可恢复)/ 未添加(仅商店可见)。
 - **`items` 由目录实时派生**,不要在 store 里缓存应用元数据。
-- 深链接只用 vue-router 的 `query`,**不新增路由记录**(桌面模式下没有 `<router-view>`,路径式路由会 No match)。
+- 深链接与路径:整页应用用真实路径(工具 path / 桌面应用 `/app/<key>`,见 `router/index.ts`),面板用 `?p=` query;**不要 `window.history.replaceState`**。
 
 ### 4.1 新增一个应用的 SOP(照做即可)
 
@@ -234,7 +234,7 @@ src/
 
 **设置(整页)**:外观与壁纸、隐藏应用管理(可恢复)、桌面布局与交互偏好、自定义站点、本地数据用量、导出 / 导入 JSON 备份。
 
-**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 12 个:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)以**全屏窗口**打开(铺满视口、直角、放开 ToolPage 1200px 限宽),其余应用保持 1100px 圆角浮层。
+**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 12 个)以**独立路径二级页**打开:桌面模式下 `App.vue` 命中路径即渲染 `<router-view>` 全屏页(左上角浮动返回),浏览器返回回来源页;其余应用保持 1100px 圆角浮层。
 
 **107 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
@@ -279,7 +279,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 4. **`category` 是字面量联合类型**。用 `数据文件`/`图片工具`/`文本工具`/`局域网` 时,`desktopApps.ts` 的联合类型与 `appCatalog.ts` 的 `APP_CATEGORY_MAP` **都要加**。
 5. **Vue 3 响应式**:push 进 `ref([])` 的 raw 对象后续赋值不触发更新(表现为永远「压缩中」)→ 必须取回响应式代理再改;computed 读模块级 `let` 变量不建立依赖 → 改 `ref`。已修 `ImageCompress.vue`、`ImageCrop.vue`。
 6. **`teleport to="body"` 拿不到 `.desktop` 上的 CSS 变量**:右键菜单 `.ctx` 必须在自身定义 `--fg` / `--glass-bg` / `--shadow` 并在 `html.dark` 覆盖。
-7. **深链接只能用 `query`**,不要 `window.history.replaceState`(会让 router 状态与地址栏脱钩),也不要新增路径式路由。面板切换(桌面↔商店/设置/添加)用 **`router.push({query})`** 留历史栈,对齐找Tab 的 /store 真实路由(浏览器返回能回到商店);书签小工具 `?add=` 收敛地址与路径深链接打开应用仍用 **`replace`**(不应产生多余历史项)。
+7. **深链接与路径约定(2026-11-12 起更新)**:整页应用(见 `FULLSCREEN_APPS`)现在有**真实路径**——路由工具用 `tools.ts` 的 path,无路由的桌面应用挂 `/app/<key>`(`router/index.ts` 生成),点击即 `router.push`,浏览器返回回原页面(对齐找Tab 的 /json-format 模型);商店/设置等面板仍用 `?p=` query + `router.push` 留历史栈;书签小工具 `?add=` 收敛地址与「直达路径浮层收敛到 /」仍用 `replace`。不要用 `window.history.replaceState`。
 8. **`AppIcon.vue` 外链 favicon 会失效**:用 `imgFailed` + `watch(iconUrl)` 回退到 emoji → EP 图标 → 首字;`AddAppPage` 会 `new Image()` 预检 URL。
 9. **图标名要验**:注册表里写的是字符串名,新增前 `node -e "...'X' in require('@element-plus/icons-vue')"`(`headphones` 不存在 → `Headset`;没有 `Left` → 用 `ArrowLeft`)。
 10. **`el-radio-group` 的 `@change` 显式标注类型**:模板内联 `(v) => …` 会让参数隐式 `any` 过不了 type-check → 抽成 `(v: string | number | boolean)` 的命名函数。
@@ -454,7 +454,20 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
 - 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
 
-### 2026-11-12 · 工作区类应用改为全屏窗口打开(界面调整)
+### 2026-11-12 · 整页应用改为换路径打开(对齐找Tab /json-format 模型,需求更正)
+- 用户澄清:「全屏」的本意是**换一个独立路径**(如找Tab 首页点 JSON 格式化 → `zhaotab.com/json-format`),而不是浮层放大;且不想专门去点关闭按钮。
+- 找Tab 实测:`/json-format` 是纯工具内容页,页内无返回按钮,返回靠浏览器历史。
+- 实现:
+  1. `appCatalog.ts`:`FULLSCREEN_APPS` 语义改为「整页路由打开」,新增 `pagePathOf(key)`(路由工具 → tools.ts 的 path;无路由桌面应用 → `/app/<key>`;非清单 → null);
+  2. `router/index.ts`:给 4 个无路由的整页应用(svg-editor / html-editor / drawing-board / quadrant-notes)生成 `/app/<key>` 路由(懒加载,`../views/apps/*.vue` glob);
+  3. `App.vue`:桌面模式下 `isDesktopPage`(route.matched 非空且 name≠home)时渲染 `.dt-page` 全屏二级页 + 左上角浮动返回按钮(有历史来路走 `router.back()` 能回商店等来源页,直达深链接 `router.push('/')` 回桌面);
+  4. `DesktopHome.vue`:`openKey()` 命中 `pagePathOf` 即 `router.push(path)`(仍先 `add` + `pushRecent`);深链接 watcher 对整页应用**不再拦截**直达路径;
+  5. `AppWindow.vue`:删除上一轮的 `fs-overlay` / `win-full` 全屏浮层形态(已被路径页取代,避免死代码)。
+- 行为矩阵:桌面图标 / 搜索 / 商店「打开」 / Dock 打开整页应用 → 换路径页;其余应用仍浮层;从商店打开整页应用后浏览器返回 → `/?p=store` 商店自动恢复(panel 是 query 派生);深链接直达 `/local-manga` 直接渲染页面。
+- 实测(dev server):长图拼接 → `/image-stitch`(页面渲染、返回按钮在、桌面视图卸载)、浏览器返回 → `/` 桌面;商店打开 JSON 生成器 → `/json-generator`、返回 → `/?p=store` 商店;SVG 编辑器 → `/app/svg-editor`、页内返回 → 桌面;直达 `/local-manga` → 页面渲染、返回按钮 → `/`;时间戳转换(非清单)仍浮层窗口、URL 不变;`type-check` 0 错误、`build` 通过。
+- 注意:后台标签页里路由跳转后的 DOM 查询可能读到旧帧(点击后另起一次 evaluate 再断言),搜索命中面板同理;Vue 响应式更新需等下一次事件循环。
+
+### 2026-11-12 · 工作区类应用改为全屏窗口打开(界面调整,已被路径页取代)
 - 用户要求:首页保持现状;二级页面里「全屏显示更美好」的应用(点名本地漫画阅读器、JSON 生成器、长图拼接)全屏打开。
 - 实现:`appCatalog.ts` 新增 `FULLSCREEN_APPS`(12 个,在浮层清单基础上扩展了同类工作区应用),`AppWindow.vue` 命中时渲染 `fs-overlay`(padding 0)+ `win-full`(max-width/max-height 取消、height 100%、圆角 0),并 `:deep(.tool-page){max-width:none}` 放开 1200px 限宽;**保留 win-body 内边距**(views/apps 下的桌面应用根容器只有 4px 2px padding,归零会贴边)。其余应用仍为 1100px 圆角浮层。
 - 全屏清单:local-manga、local-media、json-generator、json-viewer、image-stitch、markdown-editor、diff-tool、csv-viewer、svg-editor、html-editor、drawing-board、quadrant-notes。

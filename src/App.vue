@@ -4,9 +4,9 @@
  * 结构:左侧边栏(可收起) + 顶部栏 + 主内容区 + 底部状态栏
  * 命令面板(Ctrl/⌘ + K)在此统一挂载。
  */
-import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Menu, Moon, Sunny, Search, HomeFilled, Monitor } from '@element-plus/icons-vue'
+import { Menu, Moon, Sunny, Search, HomeFilled, Monitor, ArrowLeft } from '@element-plus/icons-vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useAppStore } from '@/stores/app'
 import { useDesktopStore } from '@/stores/desktop'
@@ -23,6 +23,21 @@ const router = useRouter()
 
 /** 当前路由对应的工具元信息(首页时为 undefined) */
 const currentTool = computed(() => TOOL_MAP.get(String(route.name ?? '')))
+
+/**
+ * 桌面模式下的「整页二级页」:路由命中真实路径(/json-viewer、/app/svg-editor 等)
+ * 时以独立页面渲染(对齐找Tab 的 /json-format),脱离桌面视图;浏览器返回即回原页面。
+ */
+const isDesktopPage = computed(() =>
+  desktop.mode === 'desktop' && route.name !== 'home' && route.matched.length > 0,
+)
+
+/** 返回按钮:有历史来路就 history.back(能回到商店等来源页),直达深链接则回桌面 */
+function goBack() {
+  const st = window.history.state as { back?: string } | null
+  if (st?.back) router.back()
+  else router.push('/')
+}
 
 /** 侧边栏收起状态(纯 UI,不持久化) */
 const collapsed = ref(false)
@@ -51,8 +66,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <!-- 语言包:按需引入后不再 app.use(ElementPlus),由 ConfigProvider 提供中文 -->
   <el-config-provider :locale="zhCn">
+    <!-- 桌面模式:整页二级页(独立路径,对齐找Tab /json-format) -->
+    <div v-if="isDesktopPage" class="dt-page">
+      <button class="dt-back" title="返回" @click="goBack">
+        <el-icon :size="18"><ArrowLeft /></el-icon>
+      </button>
+      <router-view />
+    </div>
+
     <!-- 桌面模式:全屏桌面导航(找Tab 式) -->
-    <DesktopHome v-if="desktop.mode === 'desktop'" />
+    <DesktopHome v-else-if="desktop.mode === 'desktop'" />
 
     <!-- 经典模式:侧边栏 + 卡片 -->
     <el-container v-else class="app-shell">
@@ -136,6 +159,35 @@ export default { name: 'AppShell' }
 <style scoped>
 .app-shell {
   height: 100%;
+}
+
+/* 桌面模式整页二级页:吃满视口滚动,左上角浮动返回(样式对齐商店页 zt-back) */
+.dt-page {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--el-bg-color-page, #f5f7fa);
+}
+.dt-back {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  z-index: 100;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+}
+.dt-back:hover {
+  color: var(--brand, #409eff);
+}
+html.dark .dt-page {
+  background: var(--el-bg-color-page);
 }
 
 .app-main-wrap {

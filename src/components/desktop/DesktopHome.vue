@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/app'
 import {
   CATALOG,
   CATALOG_MAP,
+  pagePathOf,
   normalizeSearch,
   searchCatalog,
 } from '@/config/appCatalog'
@@ -110,6 +111,12 @@ function openKey(key: string) {
   if (!CATALOG_MAP.has(key)) return
   if (!desktop.isOnDesktop(key)) desktop.add(key)
   desktop.pushRecent(key)
+  // 整页应用(工作区/画布/阅读类):对齐找Tab 换独立路径打开,浏览器返回即回原页面
+  const pp = pagePathOf(key)
+  if (pp) {
+    router.push(pp)
+    return
+  }
   windowState.key = key
   windowState.visible = true
 }
@@ -231,6 +238,8 @@ const clockDate = computed(() =>
 watch(() => route.name, (name) => {
   if (desktop.mode !== 'desktop') return
   if (name && name !== 'home' && CATALOG_MAP.has(String(name))) {
+    // 整页应用直达路径(/local-manga、/app/svg-editor 等)由 App.vue 渲染页面,不拦截
+    if (pagePathOf(String(name))) return
     openKey(String(name))
     router.replace('/')
   }

@@ -1,5 +1,17 @@
 /// <reference types="vite/client" />
 
+/** .env 里的自定义变量(值在 .env,这里只声明类型) */
+interface ImportMetaEnv {
+  /** Supabase 项目地址,如 https://xxxx.supabase.co */
+  readonly VITE_SUPABASE_URL: string
+  /** Supabase anon / publishable key(可公开,配合 RLS 使用) */
+  readonly VITE_SUPABASE_ANON_KEY: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare module 'gifenc' {
   export function GIFEncoder(): {
     writeFrame(index: Uint8Array, width: number, height: number, opts?: { palette?: number[][]; delay?: number }): void

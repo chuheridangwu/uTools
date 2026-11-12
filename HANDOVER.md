@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `eabe8ca` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `fd313bd` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,7 +95,17 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`eabe8ca`:**局域网直传:手动配对码改为 6 位数字房间**(功能变更)。
+`fd313bd`:**修复 CI 构建失败(vue-tsc 模板类型误判)**。
+- 现象:GitHub 推送后 Cloudflare Pages 构建失败,`vue-tsc --noEmit` 在 `src/views/apps/TotpAuth.vue` 第 242/247/250/253/256/263/266/274 行报 `TS2339: Property 'value' does not exist on type '{ visible, label, issuer, secret, digits, period, algo, uri }'`;本地同样命令却 0 错误。
+- 定位过程:
+  - 先确认不是我们的代码逻辑问题:本地/干净克隆 `1d0e68c` 均通过;远程 main 已被新提交 `1725481 重置package-lock.json` 覆盖(由另一侧推送),该提交把 `element-plus` 从 2.14.7 提到 **2.14.8**、`vue` 3.5.44→3.5.45、`vue-tsc`/`@vue/language-core` 3.3.13→3.3.14。
+  - 在 `/tmp` 干净克隆 `1725481` + `npm ci` 后**稳定复现**全部 8 个错误;把 `vue-tsc` 退回 3.3.13 仍报错,排除 vue-tsc 版本。
+  - 用最小用例二分:`el-dialog` + `el-form-item` + `<el-input placeholder="otpauth://totp/...?secret=...">` 三者组合才触发;把 placeholder 换成不含 `://` 的字符串即消失。结论:**vue-tsc 3.3.14 处理模板里含 `://` 的静态属性值时,会把它当类型解析,连带把同一节点的 `v-model` 目标误判为 ref**,报 `Property 'value' does not exist`。这是上游类型解析缺陷,不是业务 bug。
+- 修复(commit `fd313bd`):`TotpAuth.vue` 把该 placeholder 提为常量 `URI_PLACEHOLDER` 并用 `:placeholder="URI_PLACEHOLDER"` 绑定,保留原提示文案;附注释说明原因,防止以后改回内联写法。
+- 验证:本地 `type-check` 0 错误、`build` 通过;干净克隆 `fd313bd` + `npm ci` 后 `npm run build` 通过(等价 CI 环境)。
+- 遗留风险:仓库里还有 6 处 `placeholder` 含 `://`(`AddAppPage.vue` ×2、`QrcodeTool.vue`、`ApiTester.vue`、`UrlParser.vue`、`WebSocketTest.vue`),当前不触发报错,但若以后被包进 `el-dialog` / `el-form-item` 或上游类型再收紧,可能复现同样问题。
+
+上一次:`eabe8ca`:**局域网直传手动配对码改为 6 位数字房间**。详见下方。
 - 移除整条「复制粘贴 SDP 配对码」链路(`packCode` / `unpackCode`、配对码二维码、邀请码 / 应答码输入框与对应 CSS)。
 - 新流程:任一方点「随机生成并加入」得到 6 位数字(100000–999999,`crypto.getRandomValues`),另一方输入同一数字点「加入房间」;双方在公共 MQTT 主题 `utools/lanx/room/v1/<6 位码>` 内交换 `join` / `offer` / `answer` / `ice`,文件仍走 WebRTC DataChannel。
 - 角色自动判定:比较双方 `myId` 字典序,小的一方发 `offer`,避免 glare;**不需要区分谁是发起方**。
@@ -344,6 +354,17 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 行为变化(已同步到页面文案与 `config/tools.ts`):配对码依赖公共 MQTT,断网时不再能像旧「复制粘贴 SDP」那样离线兜底。
 - 已知限制:6 位码空间约 100 万,公共 broker 上可被猜测/碰撞;房间只保留第一对设备,后来者被忽略;不适合给陌生人传敏感文件。
 - 验证:Node + `mqtt` 脚本对随机房间主题做双客户端收发,双方都收到 `AAAA1111` 与 `BBBB2222`(自身回显由 `from === myId` 过滤);`type-check` 0 错误、`build` 通过(`LanTransfer` 24.59KB / gzip 9.11KB)。真实 WebRTC 连通性仍受环境限制无法在本机验证。
+
+### 2026-11-12 · 修复 CI 构建失败(vue-tsc 对含 :// 的 placeholder 误判)
+- 背景:推送后 Cloudflare Pages 构建失败,报 `src/views/apps/TotpAuth.vue` 8 处 `TS2339: Property 'value' does not exist on type '{...dialog...}'`;本地 `npm run type-check` 却是 0 错误。
+- 定位:
+  - 排查版本差异发现远程 main 已被新提交 `1725481 重置package-lock.json`(另一侧推送)覆盖,把 `element-plus` 2.14.7→**2.14.8**、`vue` 3.5.44→3.5.45、`vue-tsc`/`@vue/language-core` 3.3.13→3.3.14;本地 `node_modules` 已随之更新,但本地构建仍过(存在提升/缓存差异)。
+  - `/tmp` 干净克隆 `1725481` + `npm ci` 复现 8 个错误;`vue-tsc@3.3.13` 仍报错 → 非 vue-tsc 单版本问题。
+  - 最小用例二分到组合条件:`el-dialog` + `el-form-item` + `<el-input placeholder="otpauth://totp/...?secret=...">`;placeholder 换成不含 `://` 的字符串即消失(`https://example.com`、`x://y` 同样触发,`x:y`、`x/` 不触发)。
+  - 结论:vue-tsc 在模板中对含 `://` 的静态属性值做了类似类型解析的处理,连带把同节点 `v-model` 目标误判为需要 `.value`,属上游解析缺陷。
+- 修复 `fd313bd`:`TotpAuth.vue` 的该 placeholder 提为 `URI_PLACEHOLDER` 常量 + `:placeholder` 绑定,并加注释说明;不改文案。
+- 验证:本地 type-check/build 通过;干净克隆 `fd313bd` + `npm ci` 的 `npm run build` 通过(等价 CI)。已推送,远程 `origin/main` = `fd313bd`。
+- 备注:全仓库另有 6 处 `placeholder` 含 `://`,当前不报错;若后续出现同类报错,按同样方式改为绑定表达式即可。
 
 ---
 

@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `36d2112` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `9c1d309` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,7 +95,21 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-**长图拼接改为「好拼」风格三栏布局**(`src/views/ImageStitch.vue`,路由 `/image-stitch`),功能与旧版完全一致。
+**长图拼接完整实现「布局拼图」功能**(`9c1d309`,`src/views/ImageStitch.vue` + 新增 `src/utils/collage.ts`、`src/config/collageLayouts.ts`),对齐参考站 `img.ops-coffee.com/photo/` 的**功能**而不只是样式。
+- **左栏**:135 个布局模板(按图片数 2–16 分组,缩略图用 CSS Grid span 还原格子形状),外加「竖向长图 / 横向长图」两种特殊布局(保留原有长图拼接能力,长图模式下加图会自动增行)。
+- **中栏**:工具栏(文字 / 箭头 / 方框 / 圆圈 / 随机 / 清除)+ 画布。单元格支持点击上传、拖入整块区域、拖动平移(按溢出量归一化)、方向键微调(Shift 加速)、Delete 清空、双击复位;叠加元素可拖动、可删除、文字可直接编辑。
+- **右栏**:画布比例 14 个预设(1:1、16:9、9:16、16:10、4:3、3:4、2:3 6寸、3:2 6寸横、5:7 7寸、7:5 7寸横、4:5 8寸、5:4 8寸横、210:297 A4、297:210 A4横)+ 自定义比例;边框(上右下左分别设)、间距、圆角、背景色、背景图;水印(文字 / 字号 / 透明度 / 旋转 / 稀疏-中等-密集 / 平铺或 5 个单点位置);导出质量(高清 JPG / 标准 JPG / 无损 PNG)、复制到剪贴板、下载。
+- **几何一致性**:预览与导出共用同一套「设计坐标」函数(`DESIGN_BASE = 460`,与参考站同基准),`computeRects` 复刻 CSS Grid「行优先 + 稀疏」自动排布(模板全是 span-only),`coverRect` 做 cover 裁剪 + 平移,`roundRectPath` 做圆角,`drawWatermark` 画黑色半透明文字(alpha = 透明度)。预览用绝对定位单元格而非 CSS Grid,避免与导出算法分歧。
+- **导出尺寸**:长边固定 2400(标准 JPG 1600),按比例算另一边 —— 与参考站实测一致(1:1 导出 2400×2400)。
+- **实测**(dev server + 真实 DOM 操作):
+  - 135 个布局**逐一点击**校验:单元格数量 = 标题数字、两两无重叠、无越界,**135/135 通过**;
+  - 布局/比例/样式:16:9 → 512×288、边框 20/25/30/35 + 间距 30 + 圆角 24 的格子位置与 `borderRadius` 正确、自定义 3:1 → 512×171;
+  - 交互:拖入 2 张图后按 cover 铺满(239×239 显示、超出居中裁切)、拖动 40px → 图片偏移 40px、方向键 3px、双击复位、随机不报错、切布局按索引保留图片、背景图生效、重置设置恢复默认;
+  - 导出像素(用 `sips` 转 PNG + 纯 Python zlib 解码校验):4 格 1:1 → **2400×2400**、边框纯白、两格渐变色与间隙位置正确;16 格 16:9 → **2400×1350**,16 个色块中心像素全部匹配、边框与横纵间隙纯白;PNG 提示 `尺寸 2400 × 1350 px`、标准 JPG `1600 × 900 px`;叠加文字进导出(99.6% 白底 + 0.33% 红字)。
+  - `type-check` 0 错误、`build` 通过(`ImageStitch` 32.34KB / gzip 11.21KB,CSS 9.94KB)。
+- **说明**:参考站的水印是**黑色**文字(透明度即 alpha),本实现一致;工具栏「随机」实现为**打乱已填图片的槽位**(不是随机换布局)。
+
+上一次:`36d2112`:**长图拼接改为「好拼」风格三栏布局**(仅界面,功能与旧版一致)。
 - 界面参考 `img.ops-coffee.com/photo/`(好拼):左栏「拼图设置」(拼接方向 / 选择图片)+「图片顺序」列表,中栏画布工具条 + 预览区,右栏「样式调整」(间距 / 限宽 / 对齐 / 背景色)与「导出设置」(下载长图)。
 - 设计令牌照抄好拼:主色 `#0052cc`、激活底色 `#e9f2ff`、画布底 `#f4f5f7`、面板 `#fff`、边框 `#dfe1e6`、文字 `#172b4d` / `#42526e` / `#6b7f99`、工具条 `#f8f9fa` + `#dee2e6` 圆角 12;深色模式用 `html.dark .st-app` 映射另一套变量。
 - 功能项一个没少:竖向 / 横向、间距 0–100、竖向限宽 240–3000、横向对齐、背景色、多选上传、**拖拽导入**、上移 / 下移 / 单张移除 / 清空、实时预览(显示 `宽 × 高 px`)、导出 PNG。
@@ -199,6 +213,8 @@ src/
 
 **107 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
+> **长图拼接(`/image-stitch`)已升级为完整「布局拼图」**:135 个布局模板 + 14 种画布比例 + 边框/间距/圆角/背景/水印 + 高清 JPG/PNG 导出 + 剪贴板,同时保留竖向/横向长图模式。详见 3.3。
+
 ---
 
 ## 6. 未完成项
@@ -243,7 +259,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 11. **`el-select allow-create` 的自定义值要归一化**(字节换算里 `MB`/`MiB`/`M` 都得认),否则显示对、算出 NaN。
 12. **CURL 格式化**:多行 curl 的 JSON body 必须压成单行;`fetch()` 的 JSON body 用 `JSON.stringify(对象)`,别二次 stringify。
 13. **本地 HTML 预览 iframe 沙箱**:只给 `allow-scripts` 会让 frame 变不透明来源,父页面 `contentWindow.document` 抛 `SecurityError`;本地编辑器用 `allow-scripts allow-same-origin`。
-14. **`LocalMedia.vue` 选文件**:必须先把 `input.files` 快照成数组再清空 `input.value`,否则 Blink 会连带清空 FileList(表现为「选了文件夹什么都没显示」)。
+14. **选文件的 `input.files` 必须快照成数组再清空 `input.value`**,否则 Blink 会连带清空 FileList(表现为「选了文件夹什么都没显示」)。已在 `LocalMedia.vue`、`ImageStitch.vue`(`onFileChange` 里 `Array.from(input.files)` 再 `input.value = ''`)各踩一次。
 15. **排序一律用 `naturalCompare`**(`localeCompare` 加 `{numeric:true}`),不要直接 `localeCompare`,否则 `10 - …` 会排在 `1 - …` 前面。
 16. **依赖 API 事实**:cron-parser v5 只有 `CronExpressionParser.parse` 且 `next()` 要 `.toDate()`;cronstrue 用 `cronstrue/i18n` + `zh_CN`;marked v18 的 renderer 收到 token 对象;gifenc `writeFrame(Uint8Array, w, h, {palette, delay})`;exifr 去掉 `ifd0: true`。
 17. **自动化验证假象**:后台标签页里 `<transition>` 的 leave 收不到 `transitionend`,`.win-overlay` 会残留 `win-leave-active` 且 `opacity:0` —— 不是 bug,判关闭请看 class / opacity 或直接 reload,别去改 `AppWindow.vue`。
@@ -410,6 +426,14 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 新增拖拽导入(整块区域可拖入),`URL.createObjectURL` 在移除 / 清空 / 卸载时释放。
 - 实测:竖向 400×1037 / 横向 745×150 / 间距 30 → 785×150 / 背景色进像素 / 上移换序 / 移除 → 463×200 / 清空复位,均符合预期;`type-check` 0 错误、`build` 通过。
 - 踩坑记入第 7 节第 22 条(`:global(html.dark)` 会丢选择器)。
+
+### 2026-11-12 · 长图拼接完整实现布局拼图功能(`9c1d309`)
+- 用户要求「完全实现这个网站的功能,左侧布局、右侧比例等等都要有」,于是从「界面像」推进到「功能齐」:新增 135 个布局模板、14 个画布比例 + 自定义、边框(上右下左)/间距/圆角、背景色/背景图、水印、导出质量、复制到剪贴板、叠加元素(文字/箭头/方框/圆圈)。
+- 新文件:`src/config/collageLayouts.ts`(布局数据,`id:cols:rows:cells` 编码 + 分组索引 + `stitchLayout()`)、`src/utils/collage.ts`(设计坐标几何 + 导出渲染,零依赖)。
+- 保留「竖向长图 / 横向长图」作为特殊布局,原长图拼接能力不丢;长图模式下追加图片会自动增行。
+- 修真实 bug:`onFileChange` 先取 `input.files` 再 `input.value = ''` —— FileList 是活引用,清空后长度归零,图片永远加载不进来;改为 `Array.from` 快照(与第 7 节第 14 条同一个坑)。
+- 健壮性:`setPointerCapture` 包 try/catch(合成事件无活动指针会抛);剪贴板写入加 4s 超时兜底(无用户手势时 Promise 会一直挂起)。
+- 校验:135 布局逐个点开验重叠/越界/数量全通过;导出像素用 `sips` 转 PNG + 纯 Python zlib 解码核对(4 格 2400×2400、16 格 2400×1350、色块位置全对);`type-check` 0 错误、`build` 通过。
 
 ---
 

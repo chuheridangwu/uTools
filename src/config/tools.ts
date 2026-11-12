@@ -136,8 +136,9 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'image-stitch', path: '/image-stitch', name: '长图拼接', icon: 'Plus',
     category: 'image', accent: '#f59e0b',
-    short: '横向/纵向无缝拼接多图', keywords: ['拼接', '长图', 'stitch', '合并'],
-    desc: '按顺序将多张图片横向或纵向拼接为一张长图,可设置间距、对齐方式与背景色。',
+    short: '135 种布局拼图 + 横向/纵向长图',
+    keywords: ['拼接', '长图', '拼图', '布局', 'collage', 'stitch', '合并', '水印'],
+    desc: '135 个布局模板与横向/纵向长图模式,任意画布比例,可调边框、间距、圆角、背景色/背景图与水印,导出高清 JPG 或无损 PNG。',
   },
   {
     key: 'image-to-pdf', path: '/image-to-pdf', name: '图片转 PDF', icon: 'Document',

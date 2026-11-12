@@ -20,6 +20,11 @@ interface Account {
 }
 
 const KEY = 'utools_totp'
+/**
+ * 用常量而不是内联字符串:vue-tsc 3.3.14 处理模板里含 "://" 的静态属性值时
+ * 会把它当类型解析,导致同一节点上的 v-model 目标被误判(报 Property 'value' does not exist)。
+ */
+const URI_PLACEHOLDER = 'otpauth://totp/...?secret=...'
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 
 const accounts = reactive<{ list: Account[] }>({ list: [] })
@@ -239,7 +244,7 @@ onBeforeUnmount(() => {
       <el-form label-width="72px" size="small">
         <el-form-item label="导入链接">
           <div class="uri-row">
-            <el-input v-model="dialog.uri" placeholder="otpauth://totp/...?secret=..." />
+            <el-input v-model="dialog.uri" :placeholder="URI_PLACEHOLDER" />
             <el-button size="small" @click="importUri">解析</el-button>
           </div>
         </el-form-item>

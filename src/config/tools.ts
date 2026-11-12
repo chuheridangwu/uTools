@@ -24,8 +24,8 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'json-viewer', path: '/json-viewer', name: 'JSON 查看器', icon: 'DataBoard',
     category: 'dev', accent: '#6366f1',
-    short: '格式化 / 压缩 / 校验 / 树形浏览', keywords: ['json', '格式化', '压缩', '校验', 'tree'],
-    desc: '输入或粘贴 JSON,一键格式化、压缩并校验合法性,支持树形浏览、错误定位与结构统计。',
+    short: '格式化 / 折叠 / 键值编辑 / 转 XML', keywords: ['json', '格式化', '压缩', '校验', 'tree', '折叠', '转xml'],
+    desc: '完整对齐 json.cn:左侧输入带行号、右侧格式化结果可折叠与直接编辑键值,网址自动变链接、图片地址点击可预览小图,支持压缩、转 XML、保存与复制。',
   },
   {
     key: 'json-generator', path: '/json-generator', name: 'JSON 生成器', icon: 'MagicStick',

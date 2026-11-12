@@ -7,8 +7,8 @@
  *  - 接受后进入双面板:双方都可以发送(点击或拖入)与接收文件,另附文本互传
  *
  * 实现方式:在线名单与配对信令走公共 MQTT(WebSocket)通道;文件与文本本体走
- * WebRTC DataChannel 设备直连,不经过任何服务器中转。MQTT 不可达时可用
- * 「手动配对码」兜底(复制粘贴 SDP + 二维码)。
+ * WebRTC DataChannel 设备直连,不经过任何服务器中转。另有「6 位配对码」模式:
+ * 双方在公共通道的同一个 6 位数字房间里握手,适合不想出现在大厅时使用。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -19,6 +19,7 @@ import {
   CopyDocument,
   Delete,
   Download,
+  MagicStick,
   Monitor,
   Position,
   Promotion,
@@ -136,6 +137,7 @@ const sigTopicOf = (id: string) => `utools/lanx/sig/v1/${id}`
 let mqttClient: {
   publish: (topic: string, payload: string, opts?: { qos?: 0 | 1 | 2 }) => void
   subscribe: (topic: string | string[], opts?: { qos?: 0 | 1 | 2 }) => void
+  unsubscribe?: (topic: string | string[], cb?: () => void) => void
   end: (force?: boolean) => void
 } | null = null
 let presenceTimer: number | null = null
@@ -170,10 +172,13 @@ function startNegotiateWatchdog() {
   negotiateTimer = window.setTimeout(() => {
     negotiateTimer = null
     if (!connected.value) {
-      teardown()
+      if (mode.value === 'manual') resetPairing()
+      else teardown()
       awaitingPeer.value = null
       incomingInvite.value = null
-      statusText.value = '直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」'
+      statusText.value = mode.value === 'manual'
+        ? '直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或换一个网络重试'
+        : '直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「配对码」'
       ElMessage.warning('直连超时,可能是跨网络 NAT 限制')
     }
   }, 20000)
@@ -202,9 +207,16 @@ async function joinLobby() {
       lobbyState.value = 'ok'
       lobbyJoined = true
       client.subscribe([LOBBY_TOPIC, sigTopicOf(myId)], { qos: 1 })
+      // 断线重连后补订阅当前配对角色的房间
+      if (roomJoinedCode.value) client.subscribe(roomTopicOf(roomJoinedCode.value), { qos: 1 })
       void announce(true)
     })
-    client.on('message', (_topic, payload) => void handleSignal(JSON.parse(payload.toString())))
+    client.on('message', (topic, payload) => {
+      let msg: SignalMsg
+      try { msg = JSON.parse(payload.toString()) as SignalMsg } catch { return }
+      if (topic.startsWith(ROOM_PREFIX)) { void handleRoomSignal(msg); return }
+      void handleSignal(msg)
+    })
     client.on('error', () => {
       if (lobbyState.value !== 'ok') lobbyState.value = 'error'
     })
@@ -266,6 +278,12 @@ async function handleSignal(msg: SignalMsg) {
     return
   }
   if (msg.to !== myId) return // 只处理点名给本端的信令
+
+  // 正在用 6 位配对码时,忽略大厅里的邀请,避免弹窗打断
+  if (msg.t === 'invite' && mode.value === 'manual') {
+    sig(msg.from, { t: 'reject' })
+    return
+  }
 
   if (msg.t === 'invite') {
     const fromId = msg.from || msg.id || ''
@@ -457,19 +475,27 @@ function newPeer(): RTCPeerConnection {
     note()
     // 跨网络时若双方都在对称 NAT / 公司网络下,没有 TURN 中继就会 failed
     if (p.iceConnectionState === 'failed' && !connected.value) {
-      statusText.value = '直连失败:当前网络可能需要 TURN 中继,建议同一 WiFi 或改用「手动配对码」'
-      ElMessage.warning('WebRTC 直连失败,当前网络可能无法穿透 NAT')
-      // 立即结束协商,让错误条可见并允许重新发起
+      // 立即结束协商,让提示可见并允许重新发起
       stopNegotiateWatchdog()
       negotiating.value = false
       awaitingPeer.value = null
       incomingInvite.value = null
+      if (mode.value === 'manual') resetPairing()
+      statusText.value = mode.value === 'manual'
+        ? '直连失败:当前网络可能无法穿透 NAT,建议同一 WiFi 或换一个网络重试'
+        : '直连失败:当前网络可能需要 TURN 中继,建议同一 WiFi 或改用「配对码」'
+      ElMessage.warning('WebRTC 直连失败,当前网络可能无法穿透 NAT')
     }
   })
   p.addEventListener('connectionstatechange', note)
   p.onicecandidate = (e) => {
+    if (!e.candidate) return
+    if (mode.value === 'manual') {
+      publishRoom({ t: 'ice', candidate: e.candidate })
+      return
+    }
     const target = awaitingPeer.value ?? incomingInvite.value
-    if (e.candidate && target) sig(target.id, { t: 'ice', candidate: e.candidate })
+    if (target) sig(target.id, { t: 'ice', candidate: e.candidate })
   }
   return p
 }
@@ -501,6 +527,7 @@ function bindChannel(ch: RTCDataChannel) {
     negotiating.value = false
     stopNegotiateWatchdog()
     stopSignalTimers()
+    stopRoomTimer()
     incomingInvite.value = null
     awaitingPeer.value = null
     statusText.value = peerName.value ? `已连接 · ${peerName.value}` : '已连接 · 可开始传输'
@@ -515,7 +542,7 @@ function bindChannel(ch: RTCDataChannel) {
     sending = false
     ackResolvers.clear()
     // 手动模式下回到初始选择界面,避免旧配对码干扰下一轮
-    if (mode.value === 'manual') resetManual()
+    if (mode.value === 'manual') resetPairing()
     statusText.value = '对方已断开连接'
     ElMessage.warning('对方已断开连接')
   }
@@ -541,6 +568,7 @@ function teardown() {
 }
 
 function disconnect() {
+  leaveRoom()
   teardown()
   sendQueue.value = []
   incomingFiles.value = []
@@ -737,101 +765,186 @@ const overallProgress = computed(() => {
   return total === 0 ? 0 : Math.round((sent / total) * 100)
 })
 
-/* --------------------------- 手动配对兜底 --------------------------- */
-/* 逻辑与大厅版一致,只是信令改为复制粘贴码;用于公共 MQTT 不可达的环境 */
-async function packCode(desc: RTCSessionDescriptionInit): Promise<string> {
-  const json = JSON.stringify(desc)
-  try {
-    if (typeof CompressionStream !== 'undefined') {
-      const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))
-      const buf = await new Response(stream).arrayBuffer()
-      const bytes = new Uint8Array(buf)
-      let bin = ''
-      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-      return 'LT1:' + btoa(bin)
-    }
-  } catch { /* 退化 base64 */ }
-  return 'LT0:' + btoa(unescape(encodeURIComponent(json)))
+/* --------------------------- 6 位配对码房间 --------------------------- */
+/* 双方在公共 MQTT 的同一个 6 位数字房间里握手;文件仍然走 WebRTC 点对点。
+ * 角色由 myId 字典序决定(ID 小的一方发 offer),避免双方同时 offer 的 glare。 */
+const ROOM_PREFIX = 'utools/lanx/room/v1/'
+const roomTopicOf = (code: string) => ROOM_PREFIX + code
+
+const roomCode = ref('')
+const roomJoinedCode = ref('')
+const roomPeerId = ref('')
+let roomTimer: number | null = null
+let roomOfferer = false
+let roomOffering = false
+let roomAnswering = false
+let lastRoomOffer: RTCSessionDescriptionInit | null = null
+let lastRoomAnswer: RTCSessionDescriptionInit | null = null
+
+function randomRoomCode(): string {
+  const buf = new Uint32Array(1)
+  crypto.getRandomValues(buf)
+  return String(100000 + (buf[0] % 900000))
 }
 
-async function unpackCode(code: string): Promise<RTCSessionDescriptionInit> {
-  const trimmed = code.trim()
-  if (trimmed.startsWith('LT1:')) {
-    const bin = atob(trimmed.slice(4))
-    const bytes = new Uint8Array(bin.length)
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    const stream = new Blob([bytes.buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-    return JSON.parse(await new Response(stream).text())
-  }
-  if (trimmed.startsWith('LT0:')) {
-    return JSON.parse(decodeURIComponent(escape(atob(trimmed.slice(4)))))
-  }
-  return JSON.parse(trimmed)
+function onRoomCodeInput(v: string) {
+  roomCode.value = v.replace(/\D/g, '').slice(0, 6)
 }
 
-async function renderQr(text: string, opts?: { width?: number; ec?: 'L' | 'M' }): Promise<string> {
-  try {
-    // 长内容(配对码 ~500 字符)必须高分辨率生成 + 低纠错,否则模块过密扫不出来
-    return await QRCode.toDataURL(text, {
-      width: opts?.width ?? 600,
-      margin: 2,
-      errorCorrectionLevel: opts?.ec ?? 'L',
-    })
-  } catch {
-    return ''
+function stopRoomTimer() {
+  if (roomTimer) {
+    window.clearInterval(roomTimer)
+    roomTimer = null
   }
 }
 
-const manualMyCode = ref('')
-const manualMyQr = ref('')
-const manualPeerCode = ref('')
-/** manual 面板阶段:true=已生成我的码(发送方等待粘应答码);false=还没生成 */
-const manualIsSender = ref(false)
-const manualCodePlaceholder = '粘贴对方回传的配对码(LT1:…)'
-
-function switchMode(m: Mode) {
-  resetManual()
-  disconnect()
-  mode.value = m
-  if (m === 'lobby' && !lobbyJoined && lobbyState.value !== 'connecting') void joinLobby()
+function publishRoom(msg: Record<string, unknown>) {
+  if (!mqttClient || !roomJoinedCode.value) return
+  mqttClient.publish(
+    roomTopicOf(roomJoinedCode.value),
+    JSON.stringify({ ...msg, from: myId, fromName: myName.value, platform }),
+    { qos: 1 },
+  )
 }
 
-function receiverHint() {
-  ElMessage.info('把对方生成的邀请码粘贴到下方输入框,再点「粘贴邀请码,生成应答码」')
+/** 生成并加入一个新房间 */
+function joinRandomRoom() {
+  roomCode.value = randomRoomCode()
+  void joinRoom(roomCode.value)
 }
-void receiverHint
 
-async function startManualSender() {
-  resetManual()
-  manualIsSender.value = true
+async function joinRoom(code?: string) {
+  const target = (code ?? roomCode.value).trim()
+  if (!/^\d{6}$/.test(target)) {
+    ElMessage.warning('请输入 6 位数字配对码')
+    return
+  }
+  if (!mqttClient || lobbyState.value !== 'ok') {
+    ElMessage.warning('公共信令通道未连接,配对码暂时不可用,请检查网络后重试')
+    return
+  }
+  resetPairing()
+  myName.value = myName.value || uniquifyName(randomName())
+  roomCode.value = target
+  roomJoinedCode.value = target
+  roomPeerId.value = ''
+  roomOfferer = false
+  lastRoomOffer = null
+  lastRoomAnswer = null
   peerName.value = '对方'
-  connectingUI.value = true
-  statusText.value = '正在生成邀请码…'
+  negotiating.value = true
+  statusText.value = `已加入房间 ${target},等待对方输入同一号码…`
+  try { mqttClient.subscribe(roomTopicOf(target), { qos: 1 }) } catch { /* noop */ }
+  publishRoom({ t: 'join', id: myId, name: myName.value, platform })
+  startNegotiateWatchdog()
+  stopRoomTimer()
+  // 公共 MQTT 会丢消息:重复宣告 + 重发 offer/answer,直到数据通道打开
+  roomTimer = window.setInterval(() => {
+    if (connected.value) {
+      stopRoomTimer()
+      return
+    }
+    publishRoom({ t: 'join', id: myId, name: myName.value, platform })
+    if (roomOfferer && lastRoomOffer && !lastRoomAnswer) publishRoom({ t: 'offer', sdp: lastRoomOffer })
+    if (!roomOfferer && lastRoomAnswer) publishRoom({ t: 'answer', sdp: lastRoomAnswer })
+  }, 2500)
+}
+
+async function sendRoomOffer() {
+  const p = pc.value
+  if (!p) return
+  if (p.currentLocalDescription) {
+    if (lastRoomOffer && !lastRoomAnswer) publishRoom({ t: 'offer', sdp: lastRoomOffer })
+    return
+  }
+  if (roomOffering) return
+  roomOffering = true
   try {
-    if (!pc.value) prepareManualPeer(true)
-    const p = pc.value!
     const offer = await p.createOffer()
     await p.setLocalDescription(offer)
-    await waitIceGather(p)
-    const code = await packCode(p.localDescription!)
-    manualMyCode.value = code
-    manualMyQr.value = await renderQr(code)
-    statusText.value = '等待对方应答码…'
-  } catch (err) {
-    statusText.value = `生成邀请码失败:${(err as Error).message}`
-    teardown()
-    teardownStatus()
-  } finally {
-    connectingUI.value = false
+    await waitIceGather(p, 2500)
+    lastRoomOffer = p.localDescription
+    publishRoom({ t: 'offer', sdp: lastRoomOffer })
+  } catch { /* 等下一轮重发 */ } finally {
+    roomOffering = false
   }
 }
 
-/** teardown 之后恢复状态栏默认文本 */
-function teardownStatus() {
-  statusText.value = '未连接'
+async function handleRoomSignal(msg: SignalMsg) {
+  if (msg.from === myId || !roomJoinedCode.value) return
+
+  if (msg.t === 'join') {
+    // 房间只容纳一对设备;已有对手时忽略后来者
+    if (roomPeerId.value && roomPeerId.value !== msg.from) return
+    if (!roomPeerId.value) {
+      roomPeerId.value = msg.from
+      if (msg.fromName) peerName.value = msg.fromName
+    }
+    if (myId < msg.from) {
+      // 本端负责 offer
+      if (!pc.value) {
+        roomOfferer = true
+        prepareRoomPeer(true)
+        void sendRoomOffer()
+      }
+    } else if (!pc.value) {
+      roomOfferer = false
+      prepareRoomPeer(false)
+    }
+    if (!connected.value) statusText.value = `房间 ${roomJoinedCode.value} · 正在与 ${peerName.value} 建立直连…`
+    return
+  }
+
+  if (msg.t === 'offer' && msg.sdp) {
+    if (!pc.value) {
+      roomOfferer = false
+      prepareRoomPeer(false)
+    }
+    const p = pc.value
+    if (!p) return
+    // 重发的 offer:answer 已生成就直接回发,不再重复设置远端描述
+    if (p.currentRemoteDescription && lastRoomAnswer) {
+      publishRoom({ t: 'answer', sdp: lastRoomAnswer })
+      return
+    }
+    if (roomAnswering) return
+    roomAnswering = true
+    try {
+      await p.setRemoteDescription(msg.sdp)
+      await flushPendingIce(p)
+      const answer = await p.createAnswer()
+      await p.setLocalDescription(answer)
+      await waitIceGather(p, 2500)
+      lastRoomAnswer = p.localDescription
+      publishRoom({ t: 'answer', sdp: lastRoomAnswer })
+      statusText.value = `房间 ${roomJoinedCode.value} · 正在与 ${peerName.value} 建立直连…`
+    } catch { /* offer 不完整时等重发 */ } finally {
+      roomAnswering = false
+    }
+    return
+  }
+
+  if (msg.t === 'answer' && msg.sdp) {
+    const p = pc.value
+    if (!p || p.currentRemoteDescription) return
+    try {
+      await p.setRemoteDescription(msg.sdp)
+      await flushPendingIce(p)
+    } catch { /* 等重发 */ }
+    return
+  }
+
+  if (msg.t === 'ice' && msg.candidate) {
+    const p = pc.value
+    if (!p || !p.remoteDescription) {
+      pendingIce.push(msg.candidate)
+      return
+    }
+    try { await p.addIceCandidate(msg.candidate) } catch { /* 乱序候选 */ }
+  }
 }
 
-function prepareManualPeer(asOfferer: boolean) {
+function prepareRoomPeer(asOfferer: boolean) {
   const p = newPeer()
   pc.value = p
   if (asOfferer) {
@@ -858,70 +971,49 @@ async function waitIceGather(p: RTCPeerConnection, timeout = 4000): Promise<void
   })
 }
 
-const connectingUI = ref(false)
-
-async function startManualReceiver() {
-  const pasted = manualPeerCode.value.trim()
-  if (!pasted) {
-    ElMessage.warning('请先把对方的邀请码粘贴到输入框')
-    return
+/** 离开房间(不关闭已有的 PeerConnection) */
+function leaveRoom() {
+  stopRoomTimer()
+  roomOffering = false
+  roomAnswering = false
+  if (roomJoinedCode.value && mqttClient) {
+    try { mqttClient.unsubscribe?.(roomTopicOf(roomJoinedCode.value)) } catch { /* noop */ }
   }
-  if (manualMyCode.value) return // 已生成应答码,等连接即可
-  resetManual()
-  manualPeerCode.value = pasted // 重置会清空输入框,回填保留
-  manualIsSender.value = false
-  peerName.value = '对方'
-  connectingUI.value = true
-  statusText.value = '正在解析邀请码…'
-  try {
-    const offer = await unpackCode(pasted)
-    if (offer.type !== 'offer') throw new Error('这不是邀请码(应为 offer 类型)')
-    prepareManualPeer(false)
-    const p = pc.value!
-    await p.setRemoteDescription(offer)
-    const answer = await p.createAnswer()
-    await p.setLocalDescription(answer)
-    await waitIceGather(p)
-    const code = await packCode(p.localDescription!)
-    manualMyCode.value = code
-    manualMyQr.value = await renderQr(code)
-    statusText.value = '把应答码回传给对方,等待连接建立…'
-  } catch (err) {
-    statusText.value = `邀请码无效:${(err as Error).message}`
-    ElMessage.error(statusText.value)
-    teardown()
-    teardownStatus()
-  } finally {
-    connectingUI.value = false
-  }
+  roomJoinedCode.value = ''
+  roomPeerId.value = ''
+  roomOfferer = false
+  lastRoomOffer = null
+  lastRoomAnswer = null
 }
 
-async function acceptManualAnswer() {
-  const p = pc.value
-  if (!p || !manualPeerCode.value.trim()) {
-    ElMessage.warning('请先粘贴对方回传的应答码')
-    return
-  }
-  connectingUI.value = true
-  try {
-    const answer = await unpackCode(manualPeerCode.value)
-    if (answer.type !== 'answer') throw new Error('这不是应答码(应为 answer 类型)')
-    await p.setRemoteDescription(answer)
-    statusText.value = '正在建立连接…'
-  } catch (err) {
-    statusText.value = `应答码无效:${(err as Error).message}`
-    ElMessage.error(statusText.value)
-  } finally {
-    connectingUI.value = false
-  }
-}
-
-function resetManual() {
+function resetPairing() {
+  leaveRoom()
+  pendingIce.length = 0
   if (pc.value || channel.value) disconnect()
-  manualMyCode.value = ''
-  manualMyQr.value = ''
-  manualPeerCode.value = ''
-  statusText.value = '未连接'
+  else {
+    negotiating.value = false
+    statusText.value = '未连接'
+  }
+}
+
+function switchMode(m: Mode) {
+  resetPairing()
+  disconnect()
+  mode.value = m
+  if (m === 'lobby' && !lobbyJoined && lobbyState.value !== 'connecting') void joinLobby()
+}
+
+/** 本页网址二维码 */
+async function renderQr(text: string, opts?: { width?: number; ec?: 'L' | 'M' }): Promise<string> {
+  try {
+    return await QRCode.toDataURL(text, {
+      width: opts?.width ?? 400,
+      margin: 2,
+      errorCorrectionLevel: opts?.ec ?? 'M',
+    })
+  } catch {
+    return ''
+  }
 }
 
 onMounted(() => {
@@ -943,7 +1035,7 @@ onMounted(() => {
     <div class="mode-row">
       <el-radio-group v-model="mode" size="small" @update:model-value="(m: unknown) => switchMode(m as Mode)">
         <el-radio-button value="lobby">在线设备(推荐)</el-radio-button>
-        <el-radio-button value="manual">手动配对码(备用)</el-radio-button>
+        <el-radio-button value="manual">6 位配对码</el-radio-button>
       </el-radio-group>
     </div>
 
@@ -954,7 +1046,7 @@ onMounted(() => {
           <span class="panel-title">附近设备</span>
           <span class="head-hint">
             <template v-if="lobbyState === 'connecting'">正在连接设备大厅…</template>
-            <template v-else-if="lobbyState === 'error'">公共大厅不可达,可切到「手动配对码」</template>
+            <template v-else-if="lobbyState === 'error'">公共大厅不可达;6 位配对码也依赖同一信令通道,请检查网络</template>
             <template v-else>当前在线设备 {{ peers.length + 1 }} 台(等一会儿别人的名字就会出现)</template>
           </span>
         </div>
@@ -1020,71 +1112,48 @@ onMounted(() => {
       <div v-if="!connected && negotiating" class="panel pending">
         <el-icon class="spin"><Refresh /></el-icon>
         <span>{{ statusText || '正在建立直连…' }}{{ debugNote ? ` (${debugNote})` : '' }}</span>
-        <span class="hint">若长时间停留在此状态,说明当前网络无法穿透 NAT,可改用「手动配对码」或换到同一 WiFi</span>
+        <span class="hint">若长时间停留在此状态,说明当前网络无法穿透 NAT,可改用「6 位配对码」或换到同一 WiFi</span>
       </div>
     </template>
 
-    <!-- ────────────── 手动配对(兜底) ────────────── -->
+    <!-- ────────────── 6 位配对码(双方输入同一号码) ────────────── -->
     <template v-if="mode === 'manual' && !connected">
       <div class="panel">
         <div class="panel-head">
-          <span class="panel-title">手动配对</span>
-          <span class="head-hint">三步复制粘贴;电脑与手机之间可直接扫二维码</span>
+          <span class="panel-title">6 位配对码</span>
+          <span class="head-hint">双方输入同一个数字即可配对,不用加好友</span>
         </div>
 
-        <template v-if="!manualMyCode">
-          <div class="choose">
-            <el-button type="primary" :icon="UploadFilled" @click="startManualSender">我是发送方(生成邀请码)</el-button>
-            <span class="hint">—— 或 ——</span>
-            <el-button :icon="Download" @click="receiverHint">我是接收方</el-button>
-          </div>
+        <div class="room-row">
           <el-input
-            v-model="manualPeerCode"
-            type="textarea"
-            :rows="3"
-            class="top-gap"
-            placeholder="我是接收方:先把对方生成的邀请码粘贴到此处,再点下方按钮"
+            :model-value="roomCode"
+            class="room-code-input"
+            maxlength="6"
+            inputmode="numeric"
+            placeholder="000000"
+            @input="onRoomCodeInput"
+            @keyup.enter="joinRoom()"
           />
-          <div class="btn-row top-gap">
-            <el-button type="primary" :icon="Share" :loading="connectingUI" @click="startManualReceiver">粘贴邀请码,生成应答码</el-button>
-          </div>
-          <div class="status-row">
-            <span class="status-text">{{ statusText }}{{ debugNote ? ' | ' + debugNote : '' }}</span>
-            <el-button size="small" text :icon="Refresh" @click="resetManual">重置</el-button>
-          </div>
-        </template>
+          <el-button type="primary" :icon="MagicStick" @click="joinRandomRoom">随机生成并加入</el-button>
+          <el-button :icon="Position" @click="joinRoom()">加入房间</el-button>
+        </div>
 
-        <template v-else>
-          <div class="panel-title top-gap">把{{ peerName === '对方' ? '码' : '' }}发给对方:</div>
-          <div class="code-row">
-            <img v-if="manualMyQr" :src="manualMyQr" class="code-qr" alt="配对码二维码" />
-            <div class="code-main">
-              <el-input type="textarea" :rows="3" :model-value="manualMyCode" readonly />
-              <div class="code-actions top-gap">
-                <el-button type="primary" :icon="CopyDocument" @click="copyText(manualMyCode)">复制</el-button>
-              </div>
-            </div>
-          </div>
-          <template v-if="manualIsSender">
-            <el-input
-              v-model="manualPeerCode"
-              type="textarea"
-              :rows="3"
-              class="top-gap"
-              :placeholder="manualCodePlaceholder"
-            />
-            <div class="btn-row top-gap">
-              <el-button type="primary" :loading="connectingUI" @click="acceptManualAnswer">提交并建立连接</el-button>
-              <el-button :icon="Refresh" @click="resetManual">重来</el-button>
-            </div>
-          </template>
-          <div v-else class="top-gap status-text">
-            把应答码回传给对方,连接将自动建立(对方提交后本端自动进入传输界面)…
-          </div>
-          <div class="status-row">
-            <span class="status-text">{{ statusText }}{{ debugNote ? ' | ' + debugNote : '' }}</span>
-          </div>
-        </template>
+        <div class="hint top-gap">
+          发起方点「随机生成并加入」,把 6 位数字告诉对方;对方输入同一个数字点「加入房间」,连接自动建立。
+          号码相当于房间名,请确认对方身份后再传文件;配对依赖公共信令通道,完全断网时不可用。
+        </div>
+
+        <div v-if="roomJoinedCode && !connected" class="panel pending top-gap">
+          <el-icon class="spin"><Refresh /></el-icon>
+          <span>{{ statusText }}{{ debugNote ? ` (${debugNote})` : '' }}</span>
+          <el-button size="small" text :icon="CopyDocument" @click="copyText(roomJoinedCode)">复制号码</el-button>
+          <el-button size="small" text @click="resetPairing">取消</el-button>
+        </div>
+
+        <div v-else class="status-row">
+          <span class="status-text">{{ statusText }}{{ debugNote ? ' | ' + debugNote : '' }}</span>
+          <el-button size="small" text :icon="Refresh" @click="resetPairing">重置</el-button>
+        </div>
       </div>
     </template>
 
@@ -1444,36 +1513,20 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.code-row {
+.room-row {
   display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-.code-qr {
-  width: 240px;
-  max-width: 60vw;
-  height: auto;
-  border-radius: 8px;
-  border: 1px solid var(--card-border);
-  flex: none;
-  background: #fff;
-  padding: 6px;
-}
-.code-main {
-  flex: 1;
-  min-width: 0;
-}
-.code-actions {
-  display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   flex-wrap: wrap;
 }
-.choose {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+.room-code-input {
+  width: 170px;
+}
+.room-code-input :deep(input) {
+  font-size: 22px;
+  letter-spacing: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .btn-row {
   display: flex;

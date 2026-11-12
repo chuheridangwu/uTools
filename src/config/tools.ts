@@ -186,8 +186,8 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'lan-transfer', path: '/lan-transfer', name: '局域网文件直传', icon: 'Connection',
     category: 'lan', accent: '#8b5cf6', isNew: true,
-    short: '同网设备直连互传文件', keywords: ['局域网', '传输', '互传', '直连', 'webrtc', 'airdrop', '快传', 'airdrop', '面对面'],
-    desc: '同一 WiFi 下打开页面即出现在线设备清单(随机动物昵称),点连接对方接受后直连互传文件与文本;WebRTC 点对点不经服务器,支持拖拽、进度与速度显示,公共信令不可达时可用手动配对码兜底。',
+    short: '同网直传或 6 位配对码互传文件', keywords: ['局域网', '传输', '互传', '直连', '配对码', 'webrtc', 'airdrop', '快传', '面对面'],
+    desc: '同一 WiFi 下打开页面即出现在线设备清单(随机动物昵称),点连接对方接受后直连互传文件与文本;另提供 6 位数字配对码,双方输入同一号码即可在任意网络配对;WebRTC 点对点不经服务器中转,支持拖拽、进度与速度显示。',
   },
   {
     key: 'local-manga', path: '/local-manga', name: '本地漫画阅读器', icon: 'Reading',

@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-11** · 代码基线 `7a0619e` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-12** · 代码基线 `eabe8ca` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -95,17 +95,17 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
-`7a0619e`(含 `cb8159f` / `4b15d30`):**局域网直传「接受后无反馈」定位与修复**(先诊断,后改代码)。
-- **诊断结论**:用两个标签页抓组件内部状态实测,双方 `signalingState` 均为 `stable` 且本地/远端 SDP 齐全 → **accept / offer / answer 信令其实已经送达**;但两份 SDP 的 `a=candidate` 数量都是 **0**,`addIceCandidate` 调用次数也是 **0**,`iceConnectionState` 始终为 `new`。所以真实卡点在 **ICE 候选未交换/未应用**,而发起方界面只在 `channel.onopen` 才清除 `awaitingPeer`,于是「ICE 失败」被显示成「没收到接受」。
-- **修复 1(连通性)**:大厅模式在发送 offer / answer 前先 `await waitIceGather(p, 2500)`,把候选写进 SDP,不再单纯依赖单独的 ICE 信令是否送达;`waitIceGather` 增加超时参数(默认 4000,手动配对模式行为不变)。
-- **修复 2(状态可见)**:新增 `negotiating` 状态,接受后发起方从「正在等待 X 接受…」切换为「正在与 X 建立直连… (ice/conn)」;接收方同样显示该面板。
-- **修复 3(超时兜底)**:协商启动 20 秒看门狗(`startNegotiateWatchdog`),超时后 `teardown()` 并展示常驻错误条「直连超时:当前网络可能无法穿透 NAT,建议同一 WiFi 或改用「手动配对码」」,双方一致;错误条条件从「仅拒绝」放宽到所有未连接且有文案的状态(排除等待/协商中)。若 `iceConnectionState` 提前变成 `failed`,立即结束协商(`4b15d30`),错误条立刻可见,不必等 20 秒。
-- **修复 4(避免误报)**:错误条新增 `mode === 'lobby'` 限定(`7a0619e`)——手动配对模式本身在面板内展示「正在生成邀请码 / 等待应答码」等状态,不能当成错误。
-- **实测(本机双标签页)**:A 点连接 → B 接受 → 双方立即显示「正在与对方建立直连… (new/new)」;20 秒后双方均出现上述错误条,`pending` 面板与 `awaitingPeer` 正确清理,可重新发起。信令链路(邀请/接受/offer/answer)正常。
-- **环境限制**:自动化浏览器中纯 host(不配 STUN)的 `RTCPeerConnection` 也产生 0 个候选(`iceGatheringState=complete`、候选数 0),因此本环境**无法**验证真实 P2P 能否打通;跨网络最终能否连通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络会失败(是否接 TURN 需用户拍板)。
-- 结果:`type-check` 0 错误、`build` 通过(`LanTransfer` 24.81KB / gzip 9.29KB)。
+`eabe8ca`:**局域网直传:手动配对码改为 6 位数字房间**(功能变更)。
+- 移除整条「复制粘贴 SDP 配对码」链路(`packCode` / `unpackCode`、配对码二维码、邀请码 / 应答码输入框与对应 CSS)。
+- 新流程:任一方点「随机生成并加入」得到 6 位数字(100000–999999,`crypto.getRandomValues`),另一方输入同一数字点「加入房间」;双方在公共 MQTT 主题 `utools/lanx/room/v1/<6 位码>` 内交换 `join` / `offer` / `answer` / `ice`,文件仍走 WebRTC DataChannel。
+- 角色自动判定:比较双方 `myId` 字典序,小的一方发 `offer`,避免 glare;**不需要区分谁是发起方**。
+- 可靠性:房间内每 2.5 秒重发 `join`,未收到 answer 时重发 offer、未连上时重发 answer;发 SDP 前 `waitIceGather(p, 2500)` 让 SDP 自带候选;`roomOffering` / `roomAnswering` 防止并发重复协商。
+- 生命周期:`startNegotiateWatchdog` 超时与 `iceConnectionState=failed` 都会 `resetPairing()`(退订房间、停定时器、关 PC)并展示原因;`disconnect()` 统一 `leaveRoom()`;MQTT 重连时自动补订阅当前房间;大厅邀请在配对模式下自动 reject,避免弹窗打断。
+- **能力变化**:该模式依赖公共 MQTT(与在线大厅同一条通道),不再具备「信令不可达时离线兜底」的能力;页面文案与 `config/tools.ts` 描述已同步改写。
+- 已知限制:6 位码只有约 100 万组合,且房间主题在公共 broker 上可被猜测/碰撞;房间只容纳一对设备,第三个加入者会被忽略。不要在配对码模式下给陌生人传敏感文件。
+- 实测:Node 脚本验证房间主题双向收发正常(`broker.emqx.io` 会回显自身消息,页面用 `from === myId` 过滤);`type-check` 0 错误、`build` 通过(`LanTransfer` 24.59KB / gzip 9.11KB)。真实 P2P 连通性仍需真机验证。
 
-上一次:`0f0f56a`:**局域网直传信令可靠性修复**(跨网络收不到「接受」)。详见第 8 节。
+上一次:`7a0619e`:**局域网直传「接受后无反馈」定位与修复**(信令正常、ICE 候选为 0)。详见第 8 节。
 - 商店:最近打开横条、搜索分组(最近打开 / 最匹配 / 相关结果)+ 结果统计、网格↔列表(`storeView` 持久化)。
 - 桌面:搜索框聚焦且为空 → 「最近打开」分组;输入关键词 → 「搜索结果」分组;点命中即打开并 `pushRecent`(去重前移,上限 12)。
 - 实测:商店切换视图后刷新仍为列表;最近打开 2 条;搜「图片」→ 最匹配 12 + 相关 14 = 「26 个结果 · 2 组」;桌面聚焦 → 「最近打开 2」,输入「端口」→ 「搜索结果 1」,打开窗口后 `recentIds` 顺序正确维护。
@@ -192,7 +192,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - ~~Element Plus 全量引入~~ ✅ 已完成(2026-11-11,`8984563`):按需引入 + `onlyExplicitManualChunks`,首屏 1.5MB → 0.9MB,`vendor-ui` 消失,详见第 8 节。
 - 仍 >1MB 的只剩 `vendor-markdown`(marked / highlight.js)与 `heic2any`,都只在打开对应应用时加载,暂不处理。
 - `package.json` 里的 `jimp` **已无任何源码引用**(`grep -rn jimp src` 为空),属历史残留;移除前确认没有动态引用即可(本次未动,避免无谓 lockfile 变更)。
-- `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。
+- `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。2026-11-12 起「手动配对」已改为 6 位数字房间,其信令同样只做过 MQTT 层面的收发验证。
 
 ---
 
@@ -329,11 +329,27 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 实测:接受后双端立即切到「正在建立直连… (new/new)」,20 秒后双端出现超时错误条且可重新发起;`npm run type-check` 0 错误,`build` 通过(24.81KB / gzip 9.29KB)。
 - 验证限制:该自动化浏览器里连纯 host(不配 STUN)的 `RTCPeerConnection` 都采集不到候选(`complete` 但 0 个),所以本环境无法验证真实 P2P 连通性;跨网最终能否打通仍取决于双方 NAT,无 TURN 时对称 NAT / 公司网络必然失败。
 
+### 2026-11-12 · 局域网直传:手动配对码改为 6 位数字房间(功能变更)
+- 用户要求:「保持现状(TURN 不做),手动配对码改成随机 6 位数字,发起方和接收方输入同一个数字加入对方房间」。
+- 删除:`packCode` / `unpackCode`(SDP 压缩编解码)、配对码二维码 `manualMyQr`、邀请码 / 应答码文本框与 `.code-row` / `.code-qr` / `.code-main` / `.code-actions` / `.choose` 样式。
+- 新增房间协议(`src/views/LanTransfer.vue`,commit `eabe8ca`):
+  - 房间主题 `utools/lanx/room/v1/<6 位码>`,与大厅共用同一个 MQTT 连接;消息 `{ t: 'join' | 'offer' | 'answer' | 'ice', from, fromName, platform, sdp?, candidate? }`;
+  - `joinRoom()` 订阅房间并广播 `join`;`joinRandomRoom()` 用 `crypto.getRandomValues` 生成 100000–999999 后直接加入;
+  - 角色:收到 `join` 后比较 `myId < msg.from`,小的一方 `prepareRoomPeer(true)` 并发 offer,另一方 `prepareRoomPeer(false)` 等 offer;双方都无需选择「我是发起方 / 接收方」;
+  - 幂等与重发:每 2.5 秒重发 `join`;offerer 未收到 answer 时重发 offer,answerer 重发 answer;重复 offer 直接回发已生成的 answer;`roomOffering` / `roomAnswering` 防止并发协商;
+  - 候选:发 offer / answer 前 `waitIceGather(p, 2500)`,同时继续用房间主题 trickle,远端描述未就绪时进 `pendingIce` 缓存;
+  - 清理:`leaveRoom()` 停定时器 + 退订房间;`resetPairing()` = `leaveRoom()` + 必要时 `disconnect()`;`disconnect()` 现在统一先 `leaveRoom()`,避免断开后仍在旧房间发包;`switchMode()` / `onclose` 都改调 `resetPairing()`;
+  - 重连:MQTT `connect` 回调里补订阅当前房间;
+  - 互不干扰:配对模式收到大厅邀请直接回 `reject`,不弹窗。
+- 行为变化(已同步到页面文案与 `config/tools.ts`):配对码依赖公共 MQTT,断网时不再能像旧「复制粘贴 SDP」那样离线兜底。
+- 已知限制:6 位码空间约 100 万,公共 broker 上可被猜测/碰撞;房间只保留第一对设备,后来者被忽略;不适合给陌生人传敏感文件。
+- 验证:Node + `mqtt` 脚本对随机房间主题做双客户端收发,双方都收到 `AAAA1111` 与 `BBBB2222`(自身回显由 `from === myId` 过滤);`type-check` 0 错误、`build` 通过(`LanTransfer` 24.59KB / gzip 9.11KB)。真实 WebRTC 连通性仍受环境限制无法在本机验证。
+
 ---
 
 ## 9. 下次接手推荐动作
 
 1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
-2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成);C 类剩 LanTransfer 真实跨网人工验证,以及「是否接 TURN 中继」需用户拍板(Element Plus 按需引入已于 `8984563` 完成)。
+2. **先问用户要做哪一项**:B 类剩「PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件」(Whois、在线解压、SVG 编辑器已于 2026-11-11 完成);C 类剩 LanTransfer 真实跨网人工验证(大厅 + 6 位配对码两种模式),以及「是否接 TURN 中继」需用户拍板(Element Plus 按需引入已于 `8984563` 完成)。
 3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
 4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。

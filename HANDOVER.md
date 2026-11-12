@@ -95,6 +95,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
+**商店打开应用后「返回」回到商店,对齐找Tab 行为**(见第 8 节 2026-11-12 条目):`StorePage.openNow` 不再关闭商店、`panel` 改 `push` 留历史栈、Esc 先关应用窗口。
+
 **JSON 查看器对齐 json.cn/jsononline**(`04c14e7`,`src/views/JsonViewer.vue` 重写,删除不再使用的 `src/components/JsonTreeNode.vue`),零新增依赖。
 - **布局**:左侧输入框(带行号、等宽对齐)+ 中间可拖动分隔条(22%–78%)+ 右侧格式化结果(带行号),整体高度 `clamp(420px, 66vh, 760px)`,与参考站比例一致(默认 41.67% / 58.33%)。
 - **结果区左上角工具条**(用户明确要求的「多个功能」):压缩 / 转XML / 显示行号 / 清空 / 保存 / 复制 / 折叠 / 示例 / 保留转义(勾选框)/ 全屏,按钮图标用 Element Plus 图标,`title` 悬停提示,激活态换色。
@@ -275,7 +277,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 4. **`category` 是字面量联合类型**。用 `数据文件`/`图片工具`/`文本工具`/`局域网` 时,`desktopApps.ts` 的联合类型与 `appCatalog.ts` 的 `APP_CATEGORY_MAP` **都要加**。
 5. **Vue 3 响应式**:push 进 `ref([])` 的 raw 对象后续赋值不触发更新(表现为永远「压缩中」)→ 必须取回响应式代理再改;computed 读模块级 `let` 变量不建立依赖 → 改 `ref`。已修 `ImageCompress.vue`、`ImageCrop.vue`。
 6. **`teleport to="body"` 拿不到 `.desktop` 上的 CSS 变量**:右键菜单 `.ctx` 必须在自身定义 `--fg` / `--glass-bg` / `--shadow` 并在 `html.dark` 覆盖。
-7. **深链接只能用 `query` + `router.replace({query})`**,不要 `window.history.replaceState`(会让 router 状态与地址栏脱钩),也不要新增路径式路由。
+7. **深链接只能用 `query`**,不要 `window.history.replaceState`(会让 router 状态与地址栏脱钩),也不要新增路径式路由。面板切换(桌面↔商店/设置/添加)用 **`router.push({query})`** 留历史栈,对齐找Tab 的 /store 真实路由(浏览器返回能回到商店);书签小工具 `?add=` 收敛地址与路径深链接打开应用仍用 **`replace`**(不应产生多余历史项)。
 8. **`AppIcon.vue` 外链 favicon 会失效**:用 `imgFailed` + `watch(iconUrl)` 回退到 emoji → EP 图标 → 首字;`AddAppPage` 会 `new Image()` 预检 URL。
 9. **图标名要验**:注册表里写的是字符串名,新增前 `node -e "...'X' in require('@element-plus/icons-vue')"`(`headphones` 不存在 → `Headset`;没有 `Left` → 用 `ArrowLeft`)。
 10. **`el-radio-group` 的 `@change` 显式标注类型**:模板内联 `(v) => …` 会让参数隐式 `any` 过不了 type-check → 抽成 `(v: string | number | boolean)` 的命名函数。
@@ -439,6 +441,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 解析保留 jsQR 三级放大重试,新增「打开链接」(仅 http/https)。
 - 校验:`type-check` 0 错误、`build` 通过(`QrcodeTool` 159.64KB / gzip 58.02KB);dev server `/qrcode-tool` 200,模板与默认清单模块编译正常,顺序已从产物核对。
 - 限制:参数截图无法读取(模型不支持图片输入),以参考页可见参数为准;若截图有额外项,后续再补。
+
+### 2026-11-12 · 商店打开应用后「返回」回到商店而非首页(对齐找Tab,行为修复)
+- 用户要求:「在桌面的 UI 样式上跟找Tab 保持一致——打开商店、在商店中打开某个应用,返回时不应直接到首页(找Tab 不是这样)」。
+- 找Tab 实测(`/store?in=zhaotab`):商店是真实路由进历史栈,应用以浮层打开在当前页面之上,底下页面不被关闭;关闭应用回到进来的页面。
+- 修复(`StorePage.vue` / `DesktopHome.vue`):
+  1. `openNow()` 删掉 `emit('close')`——商店里点「打开」后商店保持在底下,`AppWindow`(teleport to body,z-index 1500 > `.zt-page` 60)盖在商店上;关闭应用窗口即回到商店,不再直接退到桌面首页;
+  2. `panel` 同步从 `router.replace` 改为 `router.push`——每次进出商店/设置/添加都进历史栈,浏览器后退 `/?p=store` → `/`、前进可回来,与找Tab 一致(旧代码注释声称「前进/后退也能切换」但 replace 下并不成立);
+  3. Esc 键改为**先关应用窗口**(早退),再按才关面板——避免商店被从打开的应用底下抽走。
+- 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
+- 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
 
 ### 2026-11-12 · 范围收缩:B 类应用全部放弃(决策,非代码变更)
 - 用户明确:「B类的这些都不需要做了」→ PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件 / 真云同步 全部不做,第 6 节 B 已改为「不要再提议」。

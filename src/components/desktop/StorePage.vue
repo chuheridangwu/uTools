@@ -99,7 +99,8 @@ function openNow(e: CatalogEntry) {
   if (!isAdded(e.key)) desktop.add(e.key)
   desktop.pushRecent(e.key)
   emit('open', e.key)
-  emit('close')
+  // 对齐找Tab:应用以浮层窗口打开在商店之上,商店保持打开;
+  // 关闭应用窗口后仍回到商店,而不是直接退回桌面首页。
 }
 
 function setView(v: 'grid' | 'list') {

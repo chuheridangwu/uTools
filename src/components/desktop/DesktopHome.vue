@@ -172,7 +172,8 @@ const iconsHidden = ref(false)
 /**
  * 面板状态与 URL 同步,对齐找Tab 的 /store、/setting、/add-app 独立页面:
  * ?p=store / ?p=settings / ?p=add-app 可直接分享打开,浏览器前进/后退也能切换。
- * 用 vue-router 的 query 而非新增路由记录,避免与工具路由和桌面浮层冲突。
+ * 用 vue-router 的 query 而非新增路由记录,避免与工具路由和桌面浮层冲突;
+ * 用 push 而非 replace,让每次进出面板都进历史栈(对齐找Tab 的真实路由行为)。
  */
 const panel = computed<Panel>({
   get() {
@@ -185,7 +186,7 @@ const panel = computed<Panel>({
     const q = { ...route.query }
     if (v) q.p = v === 'add' ? 'add-app' : v
     else delete q.p
-    router.replace({ query: q })
+    router.push({ query: q })
   },
 })
 
@@ -245,6 +246,11 @@ function onKeydown(e: KeyboardEvent) {
     closeMenu()
     searchKw.value = ''
     iconsHidden.value = false
+    // 有应用窗口时先关窗口(商店等面板保持在底下),再逐层退出
+    if (windowState.visible) {
+      windowState.visible = false
+      return
+    }
     if (panel.value) panel.value = ''
   }
 }

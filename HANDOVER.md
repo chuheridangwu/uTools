@@ -95,6 +95,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ### 3.3 最近一次交付
 
+**工作区类应用全屏窗口打开**(`appCatalog.ts` 的 `FULLSCREEN_APPS` + `AppWindow.vue` 全屏形态,共 12 个应用),首页与其他应用浮层不变,详见第 8 节 2026-11-12 条目。
+
 **商店打开应用后「返回」回到商店,对齐找Tab 行为**(见第 8 节 2026-11-12 条目):`StorePage.openNow` 不再关闭商店、`panel` 改 `push` 留历史栈、Esc 先关应用窗口。
 
 **JSON 查看器对齐 json.cn/jsononline**(`04c14e7`,`src/views/JsonViewer.vue` 重写,删除不再使用的 `src/components/JsonTreeNode.vue`),零新增依赖。
@@ -232,7 +234,7 @@ src/
 
 **设置(整页)**:外观与壁纸、隐藏应用管理(可恢复)、桌面布局与交互偏好、自定义站点、本地数据用量、导出 / 导入 JSON 备份。
 
-**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。
+**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 12 个:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)以**全屏窗口**打开(铺满视口、直角、放开 ToolPage 1200px 限宽),其余应用保持 1100px 圆角浮层。
 
 **107 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
@@ -451,6 +453,13 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   3. Esc 键改为**先关应用窗口**(早退),再按才关面板——避免商店被从打开的应用底下抽走。
 - 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
 - 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
+
+### 2026-11-12 · 工作区类应用改为全屏窗口打开(界面调整)
+- 用户要求:首页保持现状;二级页面里「全屏显示更美好」的应用(点名本地漫画阅读器、JSON 生成器、长图拼接)全屏打开。
+- 实现:`appCatalog.ts` 新增 `FULLSCREEN_APPS`(12 个,在浮层清单基础上扩展了同类工作区应用),`AppWindow.vue` 命中时渲染 `fs-overlay`(padding 0)+ `win-full`(max-width/max-height 取消、height 100%、圆角 0),并 `:deep(.tool-page){max-width:none}` 放开 1200px 限宽;**保留 win-body 内边距**(views/apps 下的桌面应用根容器只有 4px 2px padding,归零会贴边)。其余应用仍为 1100px 圆角浮层。
+- 全屏清单:local-manga、local-media、json-generator、json-viewer、image-stitch、markdown-editor、diff-tool、csv-viewer、svg-editor、html-editor、drawing-board、quadrant-notes。
+- 实测(dev server):本地漫画阅读器(搜索打开)与长图拼接(商店打开)窗口 offsetWidth/Height = 视口(1936×1265)、radius 0、`tool-page` maxWidth none、商店保持打开在底下;科学计算器(非清单)仍 920×616 / radius 18 / 浮层 padding 28px 40px;Esc 先关全屏窗口、再按退面板到 `/`。
+- 注意:后台标签页 transition 不结束,`getBoundingClientRect` 会卡在 scale(0.97),判断尺寸用 `offsetWidth/offsetHeight`(踩坑 17 的补充)。
 
 ### 2026-11-12 · 范围收缩:B 类应用全部放弃(决策,非代码变更)
 - 用户明确:「B类的这些都不需要做了」→ PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件 / 真云同步 全部不做,第 6 节 B 已改为「不要再提议」。

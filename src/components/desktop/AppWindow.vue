@@ -8,7 +8,7 @@
 import { computed, defineAsyncComponent, ref, watch, type Component } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { useDesktopStore } from '@/stores/desktop'
-import { CATALOG_MAP } from '@/config/appCatalog'
+import { CATALOG_MAP, FULLSCREEN_APPS } from '@/config/appCatalog'
 import { TOOL_MAP } from '@/config/tools'
 
 const props = defineProps<{ visible: boolean; appKey: string }>()
@@ -19,6 +19,8 @@ const item = computed(() => desktop.items.find((i) => i.key === props.appKey))
 
 const kind = computed(() => item.value?.kind ?? (CATALOG_MAP.get(props.appKey)?.kind ?? 'tool'))
 const title = computed(() => item.value?.name ?? TOOL_MAP.get(props.appKey)?.name ?? CATALOG_MAP.get(props.appKey)?.name ?? '')
+/** 工作区 / 画布 / 阅读类应用以全屏打开(见 appCatalog 的 FULLSCREEN_APPS) */
+const full = computed(() => FULLSCREEN_APPS.has(props.appKey))
 
 const viewModules = import.meta.glob('../../views/*.vue')
 
@@ -55,8 +57,8 @@ watch(() => [props.visible, props.appKey] as const, async ([v]) => {
 <template>
   <teleport to="body">
     <transition name="win">
-      <div v-if="visible" class="win-overlay" @click.self="emit('close')">
-        <div class="win glass-win">
+      <div v-if="visible" class="win-overlay" :class="{ 'fs-overlay': full }" @click.self="emit('close')">
+        <div class="win glass-win" :class="{ 'win-full': full }">
           <div class="win-bar">
             <span class="win-dot red" @click="emit('close')" />
             <span class="win-dot yellow" />
@@ -154,5 +156,21 @@ watch(() => [props.visible, props.appKey] as const, async ([v]) => {
 .win-leave-to {
   opacity: 0;
   transform: scale(0.97);
+}
+
+/* 全屏形态:铺满视口,直角无留白;保留正文内边距(部分桌面应用根容器自带 padding 很小),
+   但放开 ToolPage 的 1200px 宽度限制,让双栏 / 三栏工作区吃满宽度 */
+.fs-overlay {
+  padding: 0;
+}
+.win-full {
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border-radius: 0;
+}
+.win-full .win-body :deep(.tool-page) {
+  max-width: none;
+  padding-bottom: 28px;
 }
 </style>

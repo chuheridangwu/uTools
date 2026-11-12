@@ -264,6 +264,26 @@ export const DEFAULT_DESKTOP_IDS: string[] = [
 export const DEFAULT_DOCK_IDS: string[] = ['clipboard', 'noise-mixer', 'lan-transfer', 'qrcode-tool']
   .filter((k) => CATALOG_MAP.has(k))
 
+/**
+ * 以全屏窗口打开的应用:工作区 / 画布 / 双栏 / 阅读类,空间越大越好用
+ * (对齐找Tab 的全屏二级页观感);其余应用仍以 1100px 浮层窗口打开。
+ * AppWindow.vue 渲染时查这份清单。
+ */
+export const FULLSCREEN_APPS = new Set<string>([
+  'local-manga',      // 本地漫画阅读器
+  'local-media',      // 本地媒体浏览器
+  'json-generator',   // JSON 生成器
+  'json-viewer',      // JSON 查看器(双栏 + 行号)
+  'image-stitch',     // 长图拼接(三栏布局拼图)
+  'markdown-editor',  // Markdown 编辑器(编辑 + 预览)
+  'diff-tool',        // 文本对比(双栏)
+  'csv-viewer',       // CSV 查看器(大表格)
+  'svg-editor',       // SVG 编辑器(画布)
+  'html-editor',      // HTML 编辑器(编辑 + 预览)
+  'drawing-board',    // 画板(画布)
+  'quadrant-notes',   // 四象限笔记(全屏矩阵)
+])
+
 /* ------------------------------------------------------------------ *
  * 查询辅助
  * ------------------------------------------------------------------ */

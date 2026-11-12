@@ -254,20 +254,11 @@ function buildCatalog(): CatalogEntry[] {
 export const CATALOG: CatalogEntry[] = buildCatalog()
 export const CATALOG_MAP: Map<string, CatalogEntry> = new Map(CATALOG.map((e) => [e.key, e]))
 
-/** 默认桌面图标:仿照找Tab 的精选首屏,其余应用仍可在商店里一键添加 */
+/** 默认桌面图标:按用户指定的首屏清单与顺序排列,其余应用仍可在商店里添加 */
 export const DEFAULT_DESKTOP_IDS: string[] = [
-  // 效率 / 常用
-  'clipboard', 'pomodoro', 'todo-list', 'calculator', 'world-clock',
-  'unit-converter', 'password-generator', 'habit-tracker', 'sticky-notes',
-  'stopwatch-timer', 'countdown-days', 'emoji-picker', 'calendar-view',
-  // 开发
-  'jwt-decoder', 'url-parser', 'base-converter', 'morse-code',
-  'json-viewer', 'timestamp', 'regex-tester', 'encode-decode', 'qrcode-tool',
-  // 设计
-  'gradient-generator', 'palette-generator', 'shadow-generator',
-  'nine-grid-cut', 'image-to-base64', 'svg-pattern', 'color-tool',
-  // 生活 / 网络
-  'noise-mixer', 'weather', 'metronome', 'drawing-board', 'lan-transfer',
+  'local-media', 'lan-transfer', 'json-viewer', 'color-tool', 'sticky-notes',
+  'qrcode-tool', 'timestamp', 'translator', 'ip-lookup', 'todo-list',
+  'url-parser', 'encode-decode', 'palette-generator', 'json-generator', 'local-manga',
 ].filter((k) => CATALOG_MAP.has(k))
 
 export const DEFAULT_DOCK_IDS: string[] = ['clipboard', 'noise-mixer', 'lan-transfer', 'qrcode-tool']

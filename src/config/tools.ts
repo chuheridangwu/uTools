@@ -166,14 +166,9 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'qrcode-tool', path: '/qrcode-tool', name: '二维码生成', icon: 'PictureRounded',
     category: 'image', accent: '#06b6d4',
-    short: '文本/网址 → 二维码 PNG/SVG', keywords: ['二维码', 'qrcode', '生成', '二维码图片'],
-    desc: '把文本或网址生成二维码,可自定义尺寸、前景/背景色、纠错级别并嵌入中心 Logo。',
-  },
-  {
-    key: 'qr-decode', path: '/qr-decode', name: '二维码解码', icon: 'Aim',
-    category: 'image', accent: '#f97316',
-    short: '拖入图片解析二维码内容', keywords: ['二维码', '解码', '扫描', 'qr'],
-    desc: '上传或粘贴含二维码的图片,本地解析出二维码内容,自动识别网址与文本。',
+    short: '生成 + 解析二维码,可导出 PNG/SVG',
+    keywords: ['二维码', 'qrcode', '生成', '解析', '解码', '扫描', 'qr', '二维码图片'],
+    desc: '生成与解析二合一:可按草料常见参数设置容错率、尺寸、码边距、配色与中心 Logo,导出 PNG/SVG;也可拖入图片本地解析二维码内容。',
   },
 
   // ────────────────────────── 数据文件 ──────────────────────────

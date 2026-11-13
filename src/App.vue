@@ -10,6 +10,7 @@ import { Menu, Moon, Sunny, Search, HomeFilled, Monitor, ArrowLeft } from '@elem
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useAppStore } from '@/stores/app'
 import { useDesktopStore } from '@/stores/desktop'
+import { useSyncStore } from '@/stores/sync'
 import { TOOL_MAP, TOOLS } from '@/config/tools'
 import DesktopHome from '@/components/desktop/DesktopHome.vue'
 
@@ -18,6 +19,7 @@ const TOOLS_COUNT = TOOLS.length
 
 const appStore = useAppStore()
 const desktop = useDesktopStore()
+const sync = useSyncStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -59,6 +61,8 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   // 首次进入时与用户偏好同步 <html>.dark 类名(Element Plus 暗色变量依赖)
   document.documentElement.classList.toggle('dark', appStore.dark)
+  // 云同步会话恢复(未配置 Supabase 时内部直接降级为纯本地)
+  void sync.init()
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>

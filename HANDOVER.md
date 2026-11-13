@@ -11,7 +11,7 @@
 - **两个形态**:有路由的「工具」(`config/tools.ts`,28 个)与无路由的「桌面应用」(`config/desktopApps.ts`,81 条注册、**2 条排除** → 79 个)。其中 **12 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
 - **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**107 条**),商店、桌面、搜索、命令面板全部只认这一份。
 - **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换;整页应用(FULLSCREEN_APPS 12 个)以独立路径二级页打开(见第 8 节 2026-11-12)。
-- **没有后端**:所有数据在 localStorage,「云同步」等价实现为导出 / 导入 JSON。
+- **没有后端 → 已部分改变(2026-11-13)**:云同步 P1 上线——Supabase(邮箱验证码登录)+ 通用 `app_state` 表(kv 整包同步),离线优先,localStorage 仍是运行时数据源;首批同步 desktop-state / todo / sticky-notes / expense(见 `syncScopes.ts`);未配置 env 或未登录时完全等价纯本地模式。导出/导入 JSON 备份保留。
 - **不做**:游戏中心、3D 魔方、电台随身听、公众号排版;商店分类「游戏」「阅读」也不做(见 `EXCLUDED_KEYS`)。
 
 ---
@@ -94,6 +94,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
 ### 3.3 最近一次交付
+
+**云同步 P1:Supabase 邮箱验证码登录 + 通用同步引擎**(`services/supabase.ts` + `config/syncScopes.ts` + `stores/sync.ts`,设置页账户管理三态 UI),离线优先、LWW 合并、软删除墓碑、离线队列;首批同步 4 个键。详见第 8 节 2026-11-13 条目。
 
 **整页应用改为换路径打开(对齐找Tab 二级页模型)**:12 个 `FULLSCREEN_APPS` 点击后 `router.push` 到独立路径(工具用 path、无路由桌面应用新增 `/app/<key>` 路由),`App.vue` 桌面模式下命中路径时渲染独立二级页(左上角浮动返回按钮,有历史来路走 `history.back`,直达深链接回桌面),浏览器返回回到来源页(商店/桌面);浮层窗口的全屏形态代码已删除。详见第 8 节 2026-11-12 条目。
 
@@ -453,6 +455,17 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   3. Esc 键改为**先关应用窗口**(早退),再按才关面板——避免商店被从打开的应用底下抽走。
 - 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
 - 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
+
+### 2026-11-13 · 云同步 P1:Supabase 登录 + 通用同步引擎(功能新增)
+- 背景:用户决定放弃「数据只存本机、真云同步不做」的旧约定,改用 Supabase 免费版做数据存储与多端同步;已建表 `app_state`(通用 kv:scope + jsonb data + schema_version + updated_at + deleted 墓碑,RLS 只允许读写自己的行,已实测匿名写被 42501 拒绝)、登录方式定为邮箱验证码(OTP)。
+- 新文件:
+  - `src/services/supabase.ts`:客户端单例,`import('@supabase/supabase-js')` 动态加载独立 chunk(dist-BBfR8bLZ 226KB,不进首屏 preload);未配置 env 时返回 null;
+  - `src/config/syncScopes.ts`:★扩展点,声明参与同步的键(scope ↔ lsKey ↔ 展示名),首批 4 个:desktop-state / todo / sticky-notes / expense;新应用接入只加一行;
+  - `src/stores/sync.ts`:同步引擎(otp 登录、全量拉取 LWW 合并、防抖 2s 推送、软删除墓碑、离线队列 sync-pending 持久化 + online 补推、last-sync 记录)。
+- 改动:`utils/common.ts` 的 `storage.set` 派发 `utools:ls-mutated` 事件(sync 引擎按声明表过滤入队,应用代码零改动);`App.vue` 启动时 `sync.init()`;`SettingsPage.vue` 账户管理区改为三态(未配置 → 纯本地说明 / 未登录 → 验证码登录 / 已登录 → 账户+同步状态+立即同步+退出),数据管理区新增云同步状态卡。
+- **踩坑:用户 .env 里值带了引号**(`VITE_SUPABASE_URL='https://…'`),Vite 原样注入导致 createClient 收到带引号字符串;已修正为无引号并加注释。判断注入是否正确要看产物里 `createClient("https://…","sb_…")` 的实参。
+- 实测:type-check 0 错误、build 通过;REST 直连验证:匿名读 app_state 返回 `[]`(RLS 生效)、匿名写 42501 拒绝、OTP 接口联通(无效邮箱 400、有效格式返回 `{}`);产物核对 signInWithOtp / verifyOtp / onAuthStateChange / 离线补推 / 待推队列 / env 内联全部在位。注意:内置 Review 浏览器已从会话移除,本轮改为「Vite 模块转换 + 产物字符串核对 + REST 直连」验证,登录后的真实多端同步需用户真机验证。
+- 已知限制:首批只同步 4 个键;TOTP 等敏感数据按约定不同步;免费项目 7 天无活跃会暂停(数据保留);首次登录云端有数据而本地为空时直接采用云端,两侧都有且冲突时 LWW(云端新则覆盖本地)——更细的合并向导留待 P2。
 
 ### 2026-11-12 · 整页应用改为换路径打开(对齐找Tab /json-format 模型,需求更正)
 - 用户澄清:「全屏」的本意是**换一个独立路径**(如找Tab 首页点 JSON 格式化 → `zhaotab.com/json-format`),而不是浮层放大;且不想专门去点关闭按钮。

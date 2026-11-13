@@ -56,6 +56,8 @@ export const storage = {
   set(key: string, value: unknown): void {
     try {
       localStorage.setItem('utools_' + key, JSON.stringify(value))
+      // 通知云同步引擎该键已变更(sync store 按声明表过滤入队)
+      window.dispatchEvent(new CustomEvent('utools:ls-mutated', { detail: 'utools_' + key }))
     } catch {
       /* 存储已满或隐私模式下静默失败 */
     }

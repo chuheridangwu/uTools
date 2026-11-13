@@ -2,12 +2,13 @@
 /**
  * 设置整页(P4,仿找Tab /setting)
  * 分组:个性化(壁纸管理 / 隐藏的应用 / 显示与交互)、账户与数据(账户管理 / 数据管理)、帮助与反馈(关于)。
- * 云端同步在本项目里以「仅本地 + 导出/导入备份」等价实现,不做后端。
+ * 云同步(P1):Supabase 邮箱验证码登录,离线优先——localStorage 仍为数据源,云端只做备份/多端同步。
  */
-import { computed, ref, type Component } from 'vue'
+import { computed, onMounted, ref, type Component } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
+  Connection,
   FolderOpened,
   Grid,
   InfoFilled,
@@ -17,6 +18,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useDesktopStore, WALLPAPERS, type WallpaperPreset } from '@/stores/desktop'
 import { useAppStore } from '@/stores/app'
+import { useSyncStore } from '@/stores/sync'
 import { WALLPAPER_GROUPS } from '@/config/wallpapers'
 import { CATALOG, STORE_CATEGORIES } from '@/config/appCatalog'
 import { formatSize } from '@/utils/common'
@@ -25,6 +27,9 @@ import AppIcon from './AppIcon.vue'
 const emit = defineEmits<{ close: [] }>()
 const desktop = useDesktopStore()
 const appStore = useAppStore()
+const sync = useSyncStore()
+
+onMounted(() => { void sync.init() })
 
 type Section = 'wallpaper' | 'hidden' | 'display' | 'account' | 'data' | 'about'
 const section = ref<Section>('wallpaper')
@@ -116,6 +121,53 @@ async function resetLayout() {
   ElMessage.success('已重置')
   refreshStorage()
 }
+
+/* ------------------------------ 云同步(P1) ------------------------------ */
+const authEmail = ref('')
+const authCode = ref('')
+const codeSent = ref(false)
+const authBusy = ref(false)
+
+async function sendCode() {
+  if (!authEmail.value.trim()) { ElMessage.warning('请输入邮箱'); return }
+  authBusy.value = true
+  const ok = await sync.sendCode(authEmail.value)
+  authBusy.value = false
+  if (ok) {
+    codeSent.value = true
+    ElMessage.success('验证码已发送,请查收邮箱')
+  } else {
+    ElMessage.error(sync.statusText || '发送失败,请稍后再试')
+  }
+}
+
+async function verifyCode() {
+  if (!codeSent.value || authCode.value.trim().length < 6) { ElMessage.warning('请输入邮箱收到的验证码'); return }
+  authBusy.value = true
+  const ok = await sync.verifyCode(authEmail.value, authCode.value)
+  authBusy.value = false
+  if (ok) {
+    ElMessage.success('登录成功,正在同步数据')
+    codeSent.value = false
+    authCode.value = ''
+  } else {
+    ElMessage.error(sync.statusText || '验证码不正确')
+  }
+}
+
+async function signOut() {
+  await ElMessageBox.confirm('退出后数据只保存在本机,云端备份会保留。继续?', '退出登录', { type: 'warning' })
+  await sync.signOut()
+  ElMessage.success('已退出登录')
+}
+
+async function syncNow() {
+  await sync.syncNow()
+  if (sync.status === 'error' || sync.status === 'offline') ElMessage.error(sync.statusText)
+  else ElMessage.success(sync.statusText || '已同步')
+}
+
+const syncScopeLabels = computed(() => sync.scopes.map((s) => s.label).join('、'))
 
 /* ------------------------------ Dock 选择 ------------------------------ */
 function selectAllDock() { desktop.setDockIds(desktop.items.map((i) => i.key)) }
@@ -303,32 +355,102 @@ function previewCss(preset: WallpaperPreset): string {
 
         <!-- ───────────── 账户管理 ───────────── -->
         <template v-else-if="section === 'account'">
-          <div class="zt-card">
-            <div class="zt-card-title">账户管理</div>
-            <div class="zt-card-desc">无需登录,打开即用</div>
-            <div class="zt-row-between">
-              <div><div class="zt-row-label">当前账户</div><div class="zt-row-tip">匿名使用 · 不收集任何个人信息</div></div>
-              <span class="zt-badge kind">本地账户</span>
-            </div>
-            <div class="zt-row-between">
-              <div><div class="zt-row-label">存储位置</div><div class="zt-row-tip">桌面布局、壁纸、自定义网站全部保存在本机浏览器</div></div>
-              <div class="zt-inline">
-                <button class="zt-chip on">仅本地</button>
-                <button class="zt-chip" disabled title="本项目不提供云端服务">云端 + 本地</button>
+          <!-- 未配置云端:保持纯本地说明 -->
+          <template v-if="!sync.enabled">
+            <div class="zt-card">
+              <div class="zt-card-title">账户管理</div>
+              <div class="zt-card-desc">无需登录,打开即用</div>
+              <div class="zt-row-between">
+                <div><div class="zt-row-label">当前账户</div><div class="zt-row-tip">匿名使用 · 不收集任何个人信息</div></div>
+                <span class="zt-badge kind">本地账户</span>
+              </div>
+              <div class="zt-hint" style="margin-top: 12px">
+                云端同步未启用,配置以「导出 JSON 备份 → 在另一台设备导入」的纯本地方式等价实现。
               </div>
             </div>
-            <div class="zt-row-between">
-              <div><div class="zt-row-label">匿名使用统计</div><div class="zt-row-tip">本项目不采集任何统计数据</div></div>
-              <span class="zt-badge kind">未启用</span>
+          </template>
+
+          <!-- 已登录:账户信息 + 同步状态 -->
+          <template v-else-if="sync.loggedIn">
+            <div class="zt-card">
+              <div class="zt-card-title">账户管理</div>
+              <div class="zt-card-desc">数据保存在本机,并自动同步到你的云端账户</div>
+              <div class="zt-row-between">
+                <div><div class="zt-row-label">当前账户</div><div class="zt-row-tip">{{ sync.email }}</div></div>
+                <span class="zt-badge new">已登录</span>
+              </div>
+              <div class="zt-row-between">
+                <div>
+                  <div class="zt-row-label">同步状态</div>
+                  <div class="zt-row-tip">{{ sync.statusText }} · {{ sync.pendingCount ? `${sync.pendingCount} 项待推送` : '无积压' }}</div>
+                </div>
+                <div class="zt-inline">
+                  <span class="zt-badge kind">{{ sync.lastSyncText }}</span>
+                  <button class="zt-btn primary" :disabled="sync.status === 'syncing'" @click="syncNow">立即同步</button>
+                </div>
+              </div>
+              <div class="zt-row-between">
+                <div><div class="zt-row-label">同步内容</div><div class="zt-row-tip">{{ syncScopeLabels }}</div></div>
+                <span class="zt-badge kind">{{ sync.scopes.length }} 项</span>
+              </div>
+              <div class="zt-row-between">
+                <div><div class="zt-row-label">退出登录</div><div class="zt-row-tip">退出后数据只保存在本机,云端备份保留</div></div>
+                <button class="zt-btn danger" @click="signOut">退出</button>
+              </div>
             </div>
-            <div class="zt-hint" style="margin-top: 12px">
-              云端同步在本项目以「导出 JSON 备份 → 在另一台设备导入」的纯本地方式等价实现,配置不会离开你的设备。
+          </template>
+
+          <!-- 未登录:验证码登录 -->
+          <template v-else>
+            <div class="zt-card">
+              <div class="zt-card-title">登录 · 云同步</div>
+              <div class="zt-card-desc">使用邮箱验证码登录,登录后桌面布局与笔记类数据自动同步;不登录也完全可以正常使用</div>
+              <div class="zt-inline" style="margin-bottom: 10px">
+                <input
+                  v-model="authEmail"
+                  class="zt-input"
+                  type="email"
+                  placeholder="你的邮箱地址"
+                  :disabled="codeSent"
+                  @keydown.enter="codeSent ? verifyCode() : sendCode()"
+                />
+                <button v-if="!codeSent" class="zt-btn primary" :disabled="authBusy" @click="sendCode">发送验证码</button>
+                <button v-else class="zt-btn" @click="codeSent = false">更换邮箱</button>
+              </div>
+              <div v-if="codeSent" class="zt-inline" style="margin-bottom: 10px">
+                <input
+                  v-model="authCode"
+                  class="zt-input"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6 位验证码"
+                  @keydown.enter="verifyCode"
+                />
+                <button class="zt-btn primary" :disabled="authBusy" @click="verifyCode">登录</button>
+                <button class="zt-btn" :disabled="authBusy" @click="sendCode">重新发送</button>
+              </div>
+              <div class="zt-hint">
+                验证码邮件可能进入垃圾箱;登录凭据由 Supabase 托管,本站不接触你的密码(本流程无密码)。
+                数据仅同步你自己的账户(行级权限隔离)。
+              </div>
             </div>
-          </div>
+          </template>
         </template>
 
         <!-- ───────────── 数据管理 ───────────── -->
         <template v-else-if="section === 'data'">
+          <div v-if="sync.enabled" class="zt-card">
+            <div class="zt-card-title">云同步</div>
+            <div class="zt-card-desc">离线优先:数据先写本机,登录后自动与云端双向同步</div>
+            <div class="zt-row-between">
+              <div><div class="zt-row-label">状态</div><div class="zt-row-tip">{{ sync.statusText }}</div></div>
+              <div class="zt-inline">
+                <span class="zt-badge kind">{{ sync.lastSyncText }}</span>
+                <button v-if="sync.loggedIn" class="zt-btn primary" :disabled="sync.status === 'syncing'" @click="syncNow">立即同步</button>
+                <button v-else class="zt-btn" @click="section = 'account'">去登录</button>
+              </div>
+            </div>
+          </div>
           <div class="zt-card">
             <div class="zt-card-title">备份与恢复</div>
             <div class="zt-card-desc">导出完整配置(桌面图标 / 隐藏应用 / Dock / 壁纸 / 自定义网站 / 偏好)</div>
@@ -417,6 +539,20 @@ function previewCss(preset: WallpaperPreset): string {
 .nav-item.on { background: var(--zt-brand); color: #fff; }
 .nav-count { margin-left: auto; font-size: 10px; background: rgb(255 255 255 / 22%); border-radius: 8px; padding: 1px 6px; }
 .settings-content { min-width: 0; }
+/* 验证码登录输入框 */
+.zt-input {
+  height: 34px;
+  min-width: 220px;
+  padding: 0 12px;
+  border: 1px solid var(--zt-border);
+  border-radius: 10px;
+  background: var(--zt-card);
+  color: var(--zt-text);
+  font-size: 13px;
+  outline: none;
+}
+.zt-input:focus { border-color: var(--zt-brand); }
+.zt-input:disabled { opacity: 0.6; }
 @media (max-width: 760px) {
   .settings-layout { grid-template-columns: 1fr; }
   .settings-nav { position: static; display: flex; flex-wrap: wrap; gap: 6px; }

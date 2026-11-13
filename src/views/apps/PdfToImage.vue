@@ -454,7 +454,8 @@ export default { name: 'PdfToImage' }
 .stitch-box { margin-top: 6px; }
 .stitch-wrap {
   margin-bottom: 10px;
-  max-height: 420px;
+  /* 预览区跟随视口:接近全屏高度,内部滚动 */
+  max-height: max(320px, calc(100vh - 300px));
   overflow: auto;
   border: 1px solid var(--card-border, #dcdfe6);
   border-radius: 12px;
@@ -463,7 +464,7 @@ export default { name: 'PdfToImage' }
   display: flex;
   justify-content: center;
 }
-.stitch-v { max-height: 400px; }
+.stitch-v { max-height: max(300px, calc(100vh - 330px)); }
 .stitch-h { max-width: 100%; }
 
 .grid-inner {

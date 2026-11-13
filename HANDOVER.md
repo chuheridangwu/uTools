@@ -463,7 +463,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 新依赖:`pdfjs-dist@6.5.438`(Mozilla 官方,懒加载);worker 用 `pdfjs-dist/build/pdf.worker.min.mjs?url`(Vite `?url`)。首屏 preload 仍只有 3 个 JS,pdf 相关全部按需 chunk。
 - 新文件:`src/views/apps/PdfToImage.vue`(路由 `/app/pdf-to-image`,已加入 `FULLSCREEN_APPS` 整页打开);`src/utils/zip.ts`(把「在线解压」的纯前端 store ZIP 打包抽出共享,新增 `downloadBlob`)。
 - 功能:拖拽/点选 PDF → 自动全页转换;页码范围表达式(`1-3,5`,支持开区间);PNG/JPG + JPG 质量滑块;清晰度 1x/2x/3x;每页缩略图网格(220px 缩略图防内存暴涨)+ 逐张下载 + 全部打包 ZIP;**拼接长图**:竖向(等宽纵堆)/ 横向(等高横堆),用已生成的 blob 逐页 `createImageBitmap` 重绘(同一时间只有一张位图在内存),拼接前检查 canvas 上限(单边 32767 / 面积 2.68 亿像素),超出明确提示;换拼接模式即时重拼。
-- 修真实 bug:初次实现把 `rangeText` 清空放在 `loadPdf` 里,「按当前设置重新转换」会丢页码范围 → 拆出 `isNew` 参数,仅新文件清空。
+- 修真实 bug:初次实现把 `rangeText` 清空放在 `loadPdf` 里,「按当前设置重新转换」会丢页码范围 → 拆出 `isNew` 参数,仅新文件清空;长图预览高度原写死 400px(用户反馈「明明可以全屏的高度」)→ 改为 `max(320px, calc(100vh - 300px))` 跟随视口,预览区内部滚动。
 - 注册:`desktopApps.ts` 新条目(图片工具 11 → 12,目录 107 → 108)、`RELEASE_BATCHES` 追加。
 - 实测(dev server + 内置浏览器,手工构造的 3 页 PDF):3 页全部渲染(2x = 1224×1584,Letter 612×792@2x);范围 2-3 → 只出第 2/3 页;竖拼 1224×3168、横拼 2448×1584、JPG+1x 时 612×792 / 1224×792 全对;ZIP 经 Python `zipfile.testzip()` 无损、中文文件名正确、PNG 签名与尺寸核对通过;控制台 0 报错;`type-check` 0 错误、`build` 通过。
 - 限制:加密 PDF 不支持(PasswordException 明确提示);扫描版导出的就是页面原样(无 OCR);超大拼接超 canvas 上限时需降倍率/减页。

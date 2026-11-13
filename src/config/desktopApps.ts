@@ -828,6 +828,16 @@ export const DESKTOP_APPS: DesktopAppMeta[] = [
     category: '设计资源',
     comp: () => import('@/views/apps/SvgEditor.vue') as unknown as Promise<Component>,
   },
+  {
+    key: 'pdf-to-image',
+    name: 'PDF 转图片',
+    short: '逐页导出 PNG/JPG,可拼长图',
+    desc: '把 PDF 每一页渲染成 PNG 或 JPG(1x/2x/3x 清晰度),多页 PDF 每页一张;支持页码范围、打包 ZIP 下载,还可把全部页拼接成竖向或横向长图,全部本地完成。',
+    icon: 'Picture',
+    accent: '#ef4444',
+    category: '图片工具',
+    comp: () => import('@/views/apps/PdfToImage.vue') as unknown as Promise<Component>,
+  },
 ]
 
 export const APP_MAP: Map<string, DesktopAppMeta> = new Map(DESKTOP_APPS.map((a) => [a.key, a]))

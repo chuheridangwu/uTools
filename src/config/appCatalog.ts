@@ -143,6 +143,7 @@ const RELEASE_BATCHES: string[][] = [
   ['whois-lookup'],
   ['unzip-tool'],
   ['svg-editor'],
+  ['pdf-to-image'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()
@@ -283,6 +284,7 @@ export const FULLSCREEN_APPS = new Set<string>([
   'html-editor',      // HTML 编辑器(编辑 + 预览)
   'drawing-board',    // 画板(画布)
   'quadrant-notes',   // 四象限笔记(全屏矩阵)
+  'pdf-to-image',     // PDF 转图片(逐页预览 + 长图拼接)
 ])
 
 /** 整页打开应用的路径;非整页应用返回 null */

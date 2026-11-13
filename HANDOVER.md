@@ -61,13 +61,13 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 | 指标 | 数值 |
 | --- | --- |
-| `CATALOG` 总数 | **107** |
-| 桌面应用 / 路由工具 | 79 / 28(注册表 81 条,排除电台随身听、公众号排版) |
+| `CATALOG` 总数 | **108** |
+| 桌面应用 / 路由工具 | 80 / 28(注册表 82 条,排除电台随身听、公众号排版) |
 | 默认桌面图标 | 34 个(其余在商店「添加」) |
-| 商店卡片 | 107 张 |
+| 商店卡片 | 108 张 |
 
 分类计数(浏览器实测,与 README 一致):
-`全部 107 · 效率工具 21 · 开发工具 28 · 设计资源 13 · 生活实用 24 · 文本工具 3 · 图片工具 11 · 数据文件 5 · 局域网 1`
+`全部 108 · 效率工具 21 · 开发工具 28 · 设计资源 13 · 生活实用 24 · 文本工具 3 · 图片工具 12 · 数据文件 5 · 局域网 1`
 排除项泄漏 **0**。
 
 ### 3.2 构建 / 校验
@@ -94,6 +94,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
 ### 3.3 最近一次交付
+
+**PDF 转图片**(`views/apps/PdfToImage.vue` + `utils/zip.ts`,pdfjs-dist 懒加载):多页每页一张、页码范围、PNG/JPG×1x/2x/3x、ZIP 打包、竖向/横向长图拼接;整页应用 `/app/pdf-to-image`。详见第 8 节 2026-11-13 条目。
 
 **云同步 P1:Supabase 邮箱验证码登录 + 通用同步引擎**(`services/supabase.ts` + `config/syncScopes.ts` + `stores/sync.ts`,设置页账户管理三态 UI),离线优先、LWW 合并、软删除墓碑、离线队列;首批同步 4 个键。详见第 8 节 2026-11-13 条目。
 
@@ -238,7 +240,7 @@ src/
 
 **窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 12 个)以**独立路径二级页**打开:桌面模式下 `App.vue` 命中路径即渲染 `<router-view>` 全屏页(左上角浮动返回),浏览器返回回来源页;其余应用保持 1100px 圆角浮层。
 
-**107 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片 / 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
+**107 个应用 → 108 个**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片(含 PDF 转图片)/ 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
 
 > **长图拼接(`/image-stitch`)已升级为完整「布局拼图」**:135 个布局模板 + 14 种画布比例 + 边框/间距/圆角/背景/水印 + 高清 JPG/PNG 导出 + 剪贴板,同时保留竖向/横向长图模式。详见 3.3。
 >
@@ -455,6 +457,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   3. Esc 键改为**先关应用窗口**(早退),再按才关面板——避免商店被从打开的应用底下抽走。
 - 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
 - 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
+
+### 2026-11-13 · PDF 转图片(功能新增,含多页长图拼接)
+- 用户需求:「增加 PDF 转图片功能,多页 PDF 转成多张图片,并可选择把图片拼接成一张长图(横向或竖向)」。
+- 新依赖:`pdfjs-dist@6.5.438`(Mozilla 官方,懒加载);worker 用 `pdfjs-dist/build/pdf.worker.min.mjs?url`(Vite `?url`)。首屏 preload 仍只有 3 个 JS,pdf 相关全部按需 chunk。
+- 新文件:`src/views/apps/PdfToImage.vue`(路由 `/app/pdf-to-image`,已加入 `FULLSCREEN_APPS` 整页打开);`src/utils/zip.ts`(把「在线解压」的纯前端 store ZIP 打包抽出共享,新增 `downloadBlob`)。
+- 功能:拖拽/点选 PDF → 自动全页转换;页码范围表达式(`1-3,5`,支持开区间);PNG/JPG + JPG 质量滑块;清晰度 1x/2x/3x;每页缩略图网格(220px 缩略图防内存暴涨)+ 逐张下载 + 全部打包 ZIP;**拼接长图**:竖向(等宽纵堆)/ 横向(等高横堆),用已生成的 blob 逐页 `createImageBitmap` 重绘(同一时间只有一张位图在内存),拼接前检查 canvas 上限(单边 32767 / 面积 2.68 亿像素),超出明确提示;换拼接模式即时重拼。
+- 修真实 bug:初次实现把 `rangeText` 清空放在 `loadPdf` 里,「按当前设置重新转换」会丢页码范围 → 拆出 `isNew` 参数,仅新文件清空。
+- 注册:`desktopApps.ts` 新条目(图片工具 11 → 12,目录 107 → 108)、`RELEASE_BATCHES` 追加。
+- 实测(dev server + 内置浏览器,手工构造的 3 页 PDF):3 页全部渲染(2x = 1224×1584,Letter 612×792@2x);范围 2-3 → 只出第 2/3 页;竖拼 1224×3168、横拼 2448×1584、JPG+1x 时 612×792 / 1224×792 全对;ZIP 经 Python `zipfile.testzip()` 无损、中文文件名正确、PNG 签名与尺寸核对通过;控制台 0 报错;`type-check` 0 错误、`build` 通过。
+- 限制:加密 PDF 不支持(PasswordException 明确提示);扫描版导出的就是页面原样(无 OCR);超大拼接超 canvas 上限时需降倍率/减页。
 
 ### 2026-11-13 · 云同步 P1:Supabase 登录 + 通用同步引擎(功能新增)
 - 背景:用户决定放弃「数据只存本机、真云同步不做」的旧约定,改用 Supabase 免费版做数据存储与多端同步;已建表 `app_state`(通用 kv:scope + jsonb data + schema_version + updated_at + deleted 墓碑,RLS 只允许读写自己的行,已实测匿名写被 42501 拒绝)、登录方式定为邮箱验证码(OTP)。

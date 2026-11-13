@@ -122,36 +122,22 @@ async function resetLayout() {
   refreshStorage()
 }
 
-/* ------------------------------ 云同步(P1) ------------------------------ */
+/* ------------------------------ 云同步(P1,魔法链接登录) ------------------------------ */
 const authEmail = ref('')
-const authCode = ref('')
-const codeSent = ref(false)
+const linkSent = ref(false)
 const authBusy = ref(false)
 
-async function sendCode() {
+/** 发送登录链接(邮件里的链接跳回本站后自动登录,无需输入验证码) */
+async function sendLink() {
   if (!authEmail.value.trim()) { ElMessage.warning('请输入邮箱'); return }
   authBusy.value = true
   const ok = await sync.sendCode(authEmail.value)
   authBusy.value = false
   if (ok) {
-    codeSent.value = true
-    ElMessage.success('验证码已发送,请查收邮箱')
+    linkSent.value = true
+    ElMessage.success('登录链接已发送,请在邮箱中点击链接完成登录')
   } else {
     ElMessage.error(sync.statusText || '发送失败,请稍后再试')
-  }
-}
-
-async function verifyCode() {
-  if (!codeSent.value || authCode.value.trim().length < 6) { ElMessage.warning('请输入邮箱收到的验证码'); return }
-  authBusy.value = true
-  const ok = await sync.verifyCode(authEmail.value, authCode.value)
-  authBusy.value = false
-  if (ok) {
-    ElMessage.success('登录成功,正在同步数据')
-    codeSent.value = false
-    authCode.value = ''
-  } else {
-    ElMessage.error(sync.statusText || '验证码不正确')
   }
 }
 
@@ -400,38 +386,30 @@ function previewCss(preset: WallpaperPreset): string {
             </div>
           </template>
 
-          <!-- 未登录:验证码登录 -->
+          <!-- 未登录:邮箱登录链接(免验证码) -->
           <template v-else>
             <div class="zt-card">
               <div class="zt-card-title">登录 · 云同步</div>
-              <div class="zt-card-desc">使用邮箱验证码登录,登录后桌面布局与笔记类数据自动同步;不登录也完全可以正常使用</div>
+              <div class="zt-card-desc">输入邮箱发送登录链接,在邮箱中点击链接即自动登录并同步数据;不登录也完全可以正常使用</div>
               <div class="zt-inline" style="margin-bottom: 10px">
                 <input
                   v-model="authEmail"
                   class="zt-input"
                   type="email"
                   placeholder="你的邮箱地址"
-                  :disabled="codeSent"
-                  @keydown.enter="codeSent ? verifyCode() : sendCode()"
+                  :disabled="linkSent"
+                  @keydown.enter="sendLink"
                 />
-                <button v-if="!codeSent" class="zt-btn primary" :disabled="authBusy" @click="sendCode">发送验证码</button>
-                <button v-else class="zt-btn" @click="codeSent = false">更换邮箱</button>
+                <button v-if="!linkSent" class="zt-btn primary" :disabled="authBusy" @click="sendLink">发送登录链接</button>
+                <button v-else class="zt-btn" @click="linkSent = false">更换邮箱</button>
+                <button v-if="linkSent" class="zt-btn" :disabled="authBusy" @click="sendLink">重新发送</button>
               </div>
-              <div v-if="codeSent" class="zt-inline" style="margin-bottom: 10px">
-                <input
-                  v-model="authCode"
-                  class="zt-input"
-                  inputmode="numeric"
-                  maxlength="6"
-                  placeholder="6 位验证码"
-                  @keydown.enter="verifyCode"
-                />
-                <button class="zt-btn primary" :disabled="authBusy" @click="verifyCode">登录</button>
-                <button class="zt-btn" :disabled="authBusy" @click="sendCode">重新发送</button>
+              <div v-if="linkSent" class="zt-hint">
+                已发送至 {{ authEmail }}。请在<b>同一浏览器</b>中打开邮箱邮件并点击登录链接,页面会自动完成登录;
+                链接是一次性的且几分钟内有效。收不到请看垃圾箱。
               </div>
-              <div class="zt-hint">
-                验证码邮件可能进入垃圾箱;登录凭据由 Supabase 托管,本站不接触你的密码(本流程无密码)。
-                数据仅同步你自己的账户(行级权限隔离)。
+              <div v-else class="zt-hint">
+                登录凭据由 Supabase 托管,本站无密码、不接触你的邮箱密码;数据仅同步你自己的账户(行级权限隔离)。
               </div>
             </div>
           </template>

@@ -810,7 +810,8 @@ onBeforeUnmount(() => {
   --jv-lh: 22px;
 
   position: relative;
-  height: clamp(420px, 66vh, 760px);
+  /* 整页打开:填满视口(标题区约 150px) */
+  height: clamp(420px, calc(100vh - 170px), 1600px);
   border: 1px solid var(--jv-border);
   border-radius: 8px;
   background: #fff;

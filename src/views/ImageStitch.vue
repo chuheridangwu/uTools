@@ -1102,7 +1102,8 @@ watch(stageSize, () => void redrawWatermark())
   position: relative;
   display: grid;
   grid-template-columns: 214px minmax(0, 1fr) 246px;
-  height: clamp(460px, calc(100vh - 320px), 760px);
+  /* 整页打开:填满视口(标题区约 150px);浮层打开时也够高 */
+  height: clamp(460px, calc(100vh - 170px), 1600px);
   border: 1px solid var(--st-border);
   border-radius: 12px;
   overflow: hidden;

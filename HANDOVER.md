@@ -467,6 +467,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 注册:`desktopApps.ts` 新条目(图片工具 11 → 12,目录 107 → 108)、`RELEASE_BATCHES` 追加。
 - 实测(dev server + 内置浏览器,手工构造的 3 页 PDF):3 页全部渲染(2x = 1224×1584,Letter 612×792@2x);范围 2-3 → 只出第 2/3 页;竖拼 1224×3168、横拼 2448×1584、JPG+1x 时 612×792 / 1224×792 全对;ZIP 经 Python `zipfile.testzip()` 无损、中文文件名正确、PNG 签名与尺寸核对通过;控制台 0 报错;`type-check` 0 错误、`build` 通过。
 - 限制:加密 PDF 不支持(PasswordException 明确提示);扫描版导出的就是页面原样(无 OCR);超大拼接超 canvas 上限时需降倍率/减页。
+- 顺带修复(用户反馈「长图拼接打开下面是空白,没达到全屏」):整页打开后 `ImageStitch.vue` 的 `.st-app` 与 `JsonViewer.vue` 的主容器仍是旧浮层时代的 `clamp(..., 760px)` 绝对上限,高屏下下方留白 → 统一改为 `clamp(460px, calc(100vh - 170px), 1600px)` 填满视口(标题区约 150px)。`LocalMedia` / `SvgEditor` 本来就是 vh 相对值,无需改。
 
 ### 2026-11-13 · 云同步 P1:Supabase 登录 + 通用同步引擎(功能新增)
 - 背景:用户决定放弃「数据只存本机、真云同步不做」的旧约定,改用 Supabase 免费版做数据存储与多端同步;已建表 `app_state`(通用 kv:scope + jsonb data + schema_version + updated_at + deleted 墓碑,RLS 只允许读写自己的行,已实测匿名写被 42501 拒绝)、登录方式定为邮箱验证码(OTP)。

@@ -50,11 +50,24 @@ const totalBytes = computed(() => pages.value.reduce((n, p) => n + p.blob.size, 
 let pdfjs: typeof import('pdfjs-dist') | null = null
 async function loadPdfjs() {
   if (pdfjs) return pdfjs
-  const [lib, workerUrl] = await Promise.all([
+  // 主线程垫片(Safari 18.x 等:pdf.js 6 用了 Map.getOrInsertComputed 等新 API)
+  const [{ installPdfPolyfills }, lib] = await Promise.all([
+    import('@/utils/pdfPolyfills'),
     import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
   ])
-  lib.GlobalWorkerOptions.workerSrc = workerUrl.default
+  installPdfPolyfills()
+  // worker 用自带垫片的入口文件(Safari 18.x 里官方 worker 一启动就会挂)
+  try {
+    lib.GlobalWorkerOptions.workerPort = new Worker(
+      new URL('../../pdfWorker.ts', import.meta.url),
+      { type: 'module', name: 'pdf-worker' },
+    )
+  } catch (e) {
+    // 极端环境(如被 CSP 拦截)退回官方 workerSrc;垫片已在主线程,假 worker 路径也能工作
+    console.warn('[pdf2img] 自定义 worker 创建失败,退回 workerSrc:', e)
+    const workerUrl = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+    lib.GlobalWorkerOptions.workerSrc = workerUrl.default
+  }
   pdfjs = lib
   return lib
 }

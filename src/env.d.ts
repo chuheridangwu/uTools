@@ -45,3 +45,9 @@ declare module "*.vue" {
   >;
   export default component;
 }
+
+/** pdf.js worker 副作用导入(官方无类型声明文件) */
+declare module "pdfjs-dist/build/pdf.worker.min.mjs" {
+  const worker: unknown;
+  export default worker;
+}

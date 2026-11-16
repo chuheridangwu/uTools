@@ -458,6 +458,17 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 实测(dev server + 真实 DOM):商店打开「白噪音混音台」→ `.win-overlay` 与 `.zt-page` 同时存在;关红点 → 窗口 opacity 0、商店仍在(h1=应用商店);浏览器后退 → `/` 桌面、前进 → `/?p=store` 商店;商店「返回桌面」→ 桌面、再浏览器后退 → 回商店;Esc 派发 KeyboardEvent 验证:第一次关窗口、第二次退面板到 `/`。
 - 注意:后台标签页里 `<transition>` enter/leave 都收不到 transitionend,窗口实际状态要看 `opacity` 与 class,不要误判(踩坑 17)。
 
+### 2026-11-16 · PDF 转图片 Safari 18.x 兼容修复(问题修复)
+- 用户反馈:Safari 18.6 打开 PDF 转图片提示「解析失败」,Safari 27 正常。
+- 原因:pdfjs-dist 6.5.438 使用了 2026 年才全量落地的新 JS 内置方法 **`Map.prototype.getOrInsert(Computed)`**(产物 worker 约 20 处、主线程若干处),该方法 Safari **26.2+** 才支持(Chrome 145 / Firefox 144 同期);Safari 18.x 执行到解析逻辑直接 TypeError,被 catch 后显示解析失败。`Promise.try` 与 `Uint8Array.fromBase64` 只要求 Safari 18.2+,18.6 本身有,但一并防御性补齐。
+- 修复:
+  1. 新增 `src/utils/pdfPolyfills.ts`:按 TC39 提案语义补齐 Map/WeakMap 的 getOrInsert(Computed)、Promise.try、Uint8Array.fromBase64/toBase64/fromHex/toHex,原生支持时零开销;
+  2. 新增 `src/pdfWorker.ts`:worker 入口 = 先装垫片再副作用导入官方 `pdf.worker.min.mjs`(**垫片必须装进 worker**,否则 Safari 18 里 worker 一启动就挂);
+  3. `PdfToImage.vue` 的 `loadPdfjs()`:主线程装垫片 + `GlobalWorkerOptions.workerPort = new Worker(new URL('../../pdfWorker.ts', import.meta.url), { type: 'module' })`,创建失败时退回官方 `?url` workerSrc(垫片在主线程,假 worker 路径同样可用);
+  4. `vite.config.ts` 新增 `worker: { format: 'es' }`(worker 内含动态 import 代码分割,iife 不支持);`env.d.ts` 补 `pdfjs-dist/build/pdf.worker.min.mjs` 模块声明。
+- 实测(dev + 内置浏览器):注入 3 页 PDF → 3 页渲染(1224×1584)+ 竖向长图 1224×4752 全对、0 报错,worker 走新入口;首屏 preload 仍 3 个 JS,pdfWorker chunk 1.58KB 与 pdf 库 chunk 均懒加载;type-check 0 错误、build 通过。
+- 限制说明:本机无 Safari,「Safari 18.6 可用」基于补丁覆盖的 API 清单(官方 polyfill 同款做法),待用户真机复测。
+
 ### 2026-11-13 · PDF 转图片(功能新增,含多页长图拼接)
 - 用户需求:「增加 PDF 转图片功能,多页 PDF 转成多张图片,并可选择把图片拼接成一张长图(横向或竖向)」。
 - 新依赖:`pdfjs-dist@6.5.438`(Mozilla 官方,懒加载);worker 用 `pdfjs-dist/build/pdf.worker.min.mjs?url`(Vite `?url`)。首屏 preload 仍只有 3 个 JS,pdf 相关全部按需 chunk。

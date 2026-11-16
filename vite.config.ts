@@ -33,6 +33,11 @@ export default defineConfig({
     }),
     ElementPlus({}),
   ],
+  // worker 产物用 ES 模块格式:PDF 转图片的自定义 worker(pdfWorker.ts)内含动态 import
+  // (pdf.js worker 代码分割),iife 格式不支持代码分割;模块 worker 全部目标浏览器都支持
+  worker: {
+    format: "es",
+  },
   build: {
     target: "es2022", // 现代浏览器,代码体积更小
     chunkSizeWarningLimit: 1024,

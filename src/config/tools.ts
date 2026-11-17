@@ -197,6 +197,12 @@ export const TOOLS: ToolMeta[] = [
     short: '表格化查看/搜索/导出 JSON', keywords: ['csv', '表格', 'excel', '数据'],
     desc: '上传或粘贴 CSV,自动分隔并生成可搜索、分页的表格视图,支持导出 JSON 或 CSV。',
   },
+  {
+    key: 'office-viewer', path: '/office-viewer', name: 'Office 文档预览', icon: 'Document',
+    category: 'data', accent: '#185abd', isNew: true,
+    short: '本地预览 Word(.docx)与 Excel(.xls/.xlsx)/CSV', keywords: ['word', 'doc', 'docx', 'xls', 'xlsx', 'excel', 'office', '文档', '预览', '在线查看'],
+    desc: '在浏览器本地解析并预览 Office 文件,不上传:Word 按原始排版渲染(分页/表格/图片),Excel 多工作表切换表格化展示;.doc 为 97-2003 二进制格式请另存为 .docx。',
+  },
 ]
 
 /** 所有工具快捷映射,key → meta */

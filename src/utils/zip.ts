@@ -1,7 +1,9 @@
 /**
- * 纯前端 ZIP 打包(store / 不压缩模式,零依赖)
- * 从「在线解压」应用抽出共享:PDF 转图片等多文件导出场景复用。
- * 用 store 而非 deflate:导出场景只为「多个文件一次性交给浏览器」,压缩意义不大且更慢。
+ * 纯前端 ZIP 工具(零第三方依赖)
+ *  - buildZip:打包(store / 不压缩模式,零依赖),从「在线解压」应用抽出共享,
+ *    PDF 转图片等多文件导出场景复用
+ *  - readZip:读取/解压(依赖浏览器原生 DecompressionStream),用于提取
+ *    Office 文件内部的嵌入资源(如 WPS xls 的 ETCellImageData 图片流)
  */
 
 /** CRC32 表(标准 ZIP 多项式 0xEDB88320) */
@@ -99,4 +101,74 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.download = filename
   a.click()
   window.setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+}
+
+// ────────────────────────── ZIP 读取(解压) ──────────────────────────
+
+/** 解压单个 deflate-raw 数据块(依赖浏览器原生 DecompressionStream,Chrome 103+ / Safari 16.4+) */
+async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const out = await new Response(stream).arrayBuffer()
+  return new Uint8Array(out)
+}
+
+/**
+ * 读取 ZIP 全部条目(条目名 → 数据)。
+ * 用于解析 Office 文件内部的嵌入资源:.xlsx 本身(xl/media 图片)、
+ * WPS xls 私有 OLE 流 ETCellImageData(内容也是 ZIP)等。
+ */
+export async function readZip(buf: ArrayBuffer): Promise<Map<string, Uint8Array>> {
+  const u8 = new Uint8Array(buf)
+  const view = new DataView(buf)
+
+  // 从尾部找 EOCD(0x06054b50):注释最长 65535
+  let eocd = -1
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i
+      break
+    }
+  }
+  if (eocd < 0) throw new Error('不是有效的 ZIP 数据(未找到 EOCD)')
+
+  const count = view.getUint16(eocd + 10, true)
+  let cdOffset = view.getUint32(eocd + 16, true)
+
+  // 兼容 ZIP64:EOCD 前有 ZIP64 EOCD Locator(0x07064b50)时改用其中央目录偏移
+  if (cdOffset === 0xffffffff || count === 0xffff) {
+    const z64 = eocd - 20
+    if (z64 >= 0 && view.getUint32(z64, true) === 0x07064b50) {
+      cdOffset = Number(view.getBigUint64(z64 + 8, true))
+    }
+  }
+
+  const entries = new Map<string, Uint8Array>()
+  let p = cdOffset
+  for (let n = 0; n < count && p + 46 <= u8.length; n++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break // 中央目录文件头
+    const method = view.getUint16(p + 10, true)
+    const compSize = view.getUint32(p + 20, true)
+    const nameLen = view.getUint16(p + 28, true)
+    const extraLen = view.getUint16(p + 30, true)
+    const commentLen = view.getUint16(p + 32, true)
+    const localOff = view.getUint32(p + 42, true)
+    const name = new TextDecoder().decode(u8.slice(p + 46, p + 46 + nameLen))
+
+    // 本地文件头中的文件名/扩展字段长度可能与中央目录不同,数据起始按本地头算
+    const lNameLen = view.getUint16(localOff + 26, true)
+    const lExtraLen = view.getUint16(localOff + 28, true)
+    const dataStart = localOff + 30 + lNameLen + lExtraLen
+
+    if (!name.endsWith('/')) {
+      const raw = u8.slice(dataStart, dataStart + compSize)
+      if (method === 0) {
+        entries.set(name, raw) // store 不压缩
+      } else if (method === 8) {
+        entries.set(name, await inflateRaw(raw)) // deflate
+      }
+      // 其他压缩方法(加密/罕见)忽略
+    }
+    p += 46 + nameLen + extraLen + commentLen
+  }
+  return entries
 }

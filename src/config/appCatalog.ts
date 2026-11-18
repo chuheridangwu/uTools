@@ -285,6 +285,7 @@ export const FULLSCREEN_APPS = new Set<string>([
   'drawing-board',    // 画板(画布)
   'quadrant-notes',   // 四象限笔记(全屏矩阵)
   'pdf-to-image',     // PDF 转图片(逐页预览 + 长图拼接)
+  'office-viewer',    // Office 文档预览(大表格 + 嵌入图片回填)
 ])
 
 /** 整页打开应用的路径;非整页应用返回 null */

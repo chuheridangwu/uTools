@@ -4,6 +4,8 @@
  * 本地(不上传)解析并预览 Word / Excel:
  *  - .docx 用 docx-preview 还原排版渲染
  *  - .xls / .xlsx / .csv 用 SheetJS 解析,多工作表切换,表格化展示
+ *  - WPS「图片嵌入单元格」(DISPIMG 公式):提取私有 ETCellImageData 流里的图片,
+ *    按公式 ID 回填到对应单元格;无公式引用的图片在下方画廊集中展示
  *  - .doc(97-2003 二进制格式)浏览器无法可靠解析,给出另存为 .docx 的提示
  */
 import type { UploadFile } from 'element-plus'
@@ -16,12 +18,14 @@ import ToolPage from '@/components/ToolPage.vue'
 
 type Kind = 'docx' | 'excel' | 'csv' | 'doc' | 'unknown'
 
-/** 嵌入图片(WPS"图片嵌入单元格"/xlsx 内嵌图形),objectURL 需在替换时 revoke */
+/** 嵌入图片(WPS「图片嵌入单元格」/ xlsx 内嵌图形),objectURL 需在替换时 revoke */
 interface CellImage {
   name: string
   url: string
   width: number
   height: number
+  /** WPS DISPIMG ID(cNvPr 的 name,如 ID_00DA…),用于回填单元格 */
+  id?: string
 }
 
 const file = ref<File | null>(null)
@@ -29,17 +33,23 @@ const kind = ref<Kind>('unknown')
 const loading = ref(false)
 const errMsg = ref('')
 
-/** 嵌入图片列表 */
+/** 嵌入图片列表(全部)与 DISPIMG ID → 图片映射 */
 const cellImages = ref<CellImage[]>([])
-const activeImage = ref('')
+const dispImgs = ref<Map<string, CellImage>>(new Map())
+
+/** 大图查看:当前展示的图片 URL */
+const viewerUrl = ref('')
 
 /** Excel 状态:工作表名列表与当前表 */
 const sheetNames = ref<string[]>([])
 const activeSheet = ref('')
 const sheetRows = ref(0)
 const sheetCols = ref(0)
-/** 当前表的 HTML(xlsx 的 sheet_to_html 产物) */
+/** 当前表的 HTML(自建:含合并单元格与回填图片) */
 const tableHtml = ref('')
+
+/** 工作簿缓存(8MB 大文件切换工作表时避免重复解析) */
+let cachedWb: XLSX.WorkBook | null = null
 
 /** docx 渲染容器 */
 const docxBody = useTemplateRef<HTMLDivElement>('docxBody')
@@ -48,6 +58,12 @@ const fileName = computed(() => file.value?.name ?? '')
 const fileSize = computed(() => {
   const n = file.value?.size ?? 0
   return n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(2)} MB`
+})
+
+/** 没有被 DISPIMG 公式引用的图片(画廊兜底展示) */
+const spareImages = computed(() => {
+  const used = new Set(dispImgs.value.values())
+  return cellImages.value.filter((im) => !used.has(im))
 })
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -62,14 +78,16 @@ const KIND_LABEL: Record<Kind, string> = {
 function revokeImages() {
   for (const im of cellImages.value) URL.revokeObjectURL(im.url)
   cellImages.value = []
-  activeImage.value = ''
+  dispImgs.value = new Map()
+  viewerUrl.value = ''
 }
 
 /**
  * 提取电子表格嵌入图片:
  *  - .xlsx / .xls(xlsx 包):ZIP 本身,取 xl/media/*
  *  - WPS xls:私有 OLE 流 ETCellImageData 内是 ZIP(内含 xl/cellImages.xml + xl/media/*)
- * 有 cellImages.xml 时按其 rId 顺序排列;否则按文件名自然排序。
+ * 有 cellImages.xml 时按其 rId 顺序排列,并记录 cNvPr name(DISPIMG ID)用于回填;
+ * 否则按文件名自然排序。
  */
 async function extractCellImages(buf: ArrayBuffer, isXls: boolean) {
   revokeImages()
@@ -92,8 +110,8 @@ async function extractCellImages(buf: ArrayBuffer, isXls: boolean) {
     const media = [...entries.keys()].filter((n) => n.startsWith('xl/media/') && /\.(png|jpe?g|gif|bmp|webp)$/i.test(n))
     if (!media.length) return
 
-    // 解析 rId → media 路径(cellImages.xml.rels),保证顺序与文档一致
-    const order: string[] = []
+    // 解析 cellImages.xml:每个 cellImage 的 DISPIMG ID(cNvPr name)与 rId → media 路径
+    const order: Array<{ target: string; id?: string }> = []
     const cellXml = entries.get('xl/cellImages.xml')
     const relsXml = entries.get('xl/_rels/cellImages.xml.rels')
     if (cellXml && relsXml) {
@@ -101,23 +119,41 @@ async function extractCellImages(buf: ArrayBuffer, isXls: boolean) {
       const relText = new TextDecoder().decode(relsXml)
       for (const m of relText.matchAll(/Id="([^"]+)"[^>]*?Target="([^"]+)"/g)) rels.set(m[1], m[2])
       const cellText = new TextDecoder().decode(cellXml)
-      for (const m of cellText.matchAll(/r:embed="([^"]+)"/g)) {
-        const target = rels.get(m[1])
-        if (target) order.push('xl/' + target.replace(/^\.\//, '').replace(/^media\//, 'media/'))
+      for (const block of cellText.matchAll(/<etc:cellImage>([\s\S]*?)<\/etc:cellImage>/g)) {
+        const embed = /r:embed="([^"]+)"/.exec(block[1])?.[1]
+        const id = /name="(ID_[^"]+)"/.exec(block[1])?.[1]
+        const target = embed ? rels.get(embed) : undefined
+        if (target) order.push({ target, id })
       }
     }
-    const sorted = [...new Set([...order, ...media.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))])]
-      .filter((n) => media.includes(n))
+
+    // 排序:先按文档声明顺序,再补上未声明的媒体(按文件名自然排序)
+    const declared = order.map((o) => 'xl/' + o.target.replace(/^\.\//, '')).filter((n) => media.includes(n))
+    const rest = media
+      .filter((n) => !declared.includes(n))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    const sorted = [...declared, ...rest]
+    const idByTarget = new Map(order.map((o) => [o.target, o.id]))
 
     const list: CellImage[] = []
+    const idMap = new Map<string, CellImage>()
     for (const name of sorted) {
       const blob = new Blob([entries.get(name) as unknown as BlobPart], { type: guessMime(name) })
       const url = URL.createObjectURL(blob)
       const dim = await imageSize(url)
-      list.push({ name: name.split('/').pop() ?? name, url, width: dim.w, height: dim.h })
+      const relTarget = name.slice('xl/'.length)
+      const im: CellImage = {
+        name: name.split('/').pop() ?? name,
+        url,
+        width: dim.w,
+        height: dim.h,
+        id: idByTarget.get(relTarget),
+      }
+      list.push(im)
+      if (im.id) idMap.set(im.id, im)
     }
     cellImages.value = list
-    activeImage.value = list[0]?.url ?? ''
+    dispImgs.value = idMap
   } catch {
     // 嵌入图片提取失败不影响表格展示
   }
@@ -151,21 +187,83 @@ function detectKind(name: string): Kind {
   return 'unknown'
 }
 
-/** 渲染 Excel / CSV:解析工作簿 → 默认显示第一个表,切换时重新生成 HTML */
-function renderExcel(buf: ArrayBuffer) {
-  const wb = XLSX.read(buf, { type: 'array' })
-  if (!wb.SheetNames.length) throw new Error('工作簿中没有工作表')
-  sheetNames.value = wb.SheetNames
-  activeSheet.value = wb.SheetNames[0]
-  showSheet(wb)
+/* ------------------------------------------------------------------ *
+ * 自建表格 HTML:支持合并单元格,并把 DISPIMG 公式回填为对应图片
+ * ------------------------------------------------------------------ */
+
+const escHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** 单元格里的 DISPIMG 公式 ID;普通文本返回 null */
+function dispIdOf(cell: XLSX.CellObject | undefined): string | null {
+  if (!cell) return null
+  const m = /DISPIMG\(\s*"([^"]+)"/.exec(String(cell.f ?? cell.w ?? cell.v ?? ''))
+  return m ? m[1] : null
 }
 
-/** 切换/首次展示某个工作表 */
-function showSheet(wb?: XLSX.WorkBook) {
-  const book = wb ?? XLSX.read(file.value as unknown as ArrayBuffer, { type: 'array' })
-  const sheet = book.Sheets[activeSheet.value]
+function buildSheetHtml(sheet: XLSX.WorkSheet, idMap: Map<string, CellImage>): string {
+  if (!sheet['!ref']) return ''
+  const range = XLSX.utils.decode_range(sheet['!ref'])
+
+  // 合并单元格:左上角带 rowspan/colspan,其余格子跳过
+  const skip = new Set<string>()
+  const spans = new Map<string, { rs: number; cs: number }>()
+  for (const m of (sheet['!merges'] ?? []) as XLSX.Range[]) {
+    spans.set(`${m.s.r},${m.s.c}`, { rs: m.e.r - m.s.r + 1, cs: m.e.c - m.s.c + 1 })
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        if (r !== m.s.r || c !== m.s.c) skip.add(`${r},${c}`)
+      }
+    }
+  }
+
+  let html = '<table><tbody>'
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    html += '<tr>'
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const key = `${r},${c}`
+      if (skip.has(key)) continue
+      const sp = spans.get(key)
+      const attrs = sp ? ` rowspan="${sp.rs}" colspan="${sp.cs}"` : ''
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined
+
+      // DISPIMG 公式 → 回填对应图片(点击可放大)
+      const id = dispIdOf(cell)
+      const im = id ? idMap.get(id) : undefined
+      if (im) {
+        html += `<td${attrs} class="has-img"><img src="${im.url}" alt="${escHtml(im.name)}"></td>`
+        continue
+      }
+
+      const text = cell ? String(cell.w ?? cell.v ?? '') : ''
+      html += `<td${attrs}>${escHtml(text)}</td>`
+    }
+    html += '</tr>'
+  }
+  return html + '</tbody></table>'
+}
+
+/** 表格内图片点击放大(事件委托) */
+function onTableClick(e: MouseEvent) {
+  const img = (e.target as HTMLElement | null)?.closest?.('td.has-img img') as HTMLImageElement | null
+  if (img) viewerUrl.value = img.getAttribute('src') ?? ''
+}
+
+/** 渲染 Excel / CSV:解析工作簿 → 默认显示第一个表,切换时重新生成 HTML */
+function renderExcel(buf: ArrayBuffer) {
+  const wb = XLSX.read(buf, { type: 'array', cellFormula: true })
+  if (!wb.SheetNames.length) throw new Error('工作簿中没有工作表')
+  cachedWb = wb
+  sheetNames.value = wb.SheetNames
+  activeSheet.value = wb.SheetNames[0]
+  showSheet()
+}
+
+/** 切换/首次展示某个工作表(使用缓存的解析结果) */
+function showSheet() {
+  const sheet = cachedWb?.Sheets[activeSheet.value]
   if (!sheet) return
-  tableHtml.value = XLSX.utils.sheet_to_html(sheet, { header: '', footer: '' })
+  tableHtml.value = buildSheetHtml(sheet, dispImgs.value)
   const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null
   sheetRows.value = range ? range.e.r - range.s.r + 1 : 0
   sheetCols.value = range ? range.e.c - range.s.c + 1 : 0
@@ -176,6 +274,7 @@ async function onFile(f: File) {
   errMsg.value = ''
   tableHtml.value = ''
   sheetNames.value = []
+  cachedWb = null
   revokeImages()
   kind.value = detectKind(f.name)
 
@@ -200,9 +299,9 @@ async function onFile(f: File) {
         useBase64URL: true,
       })
     } else {
-      renderExcel(buf)
-      // 表格之外的嵌入图片(WPS"图片嵌入单元格"/xlsx 内嵌图形)单独提取展示
+      // 先提取嵌入图片(建立 DISPIMG ID → URL 映射),再建表回填到原位
       await extractCellImages(buf, f.name.toLowerCase().endsWith('.xls'))
+      renderExcel(buf)
     }
   } catch (e) {
     errMsg.value = `解析失败: ${(e as Error).message ?? e}`
@@ -218,6 +317,7 @@ function clearFile() {
   errMsg.value = ''
   tableHtml.value = ''
   sheetNames.value = []
+  cachedWb = null
   revokeImages()
 }
 
@@ -228,7 +328,7 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
 <template>
   <ToolPage>
     <template #title>Office 文档预览</template>
-    <template #desc>在浏览器本地预览 Word(.docx)与 Excel(.xls/.xlsx)/CSV,文件不上传;多工作表切换,Word 按原始排版渲染。</template>
+    <template #desc>在浏览器本地预览 Word(.docx)与 Excel(.xls/.xlsx)/CSV,文件不上传;多工作表切换,Word 按原始排版渲染,WPS 嵌入单元格图片自动回填原位(点击放大)。</template>
 
     <el-card shadow="never">
       <template #header>
@@ -266,40 +366,34 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
       </div>
     </el-card>
 
-    <!-- Excel/CSV:工作表切换 + 表格 -->
+    <!-- Excel/CSV:工作表切换 + 表格(嵌入单元格图片已回填原位) -->
     <el-card v-if="file && (kind === 'excel' || kind === 'csv') && !errMsg" shadow="never" class="mt12">
       <template #header>
         <div class="head">
           <span>{{ fileName }} · {{ sheetRows }} 行 × {{ sheetCols }} 列</span>
-          <span v-if="sheetNames.length > 1" class="muted">共 {{ sheetNames.length }} 个工作表</span>
+          <span v-if="cellImages.length" class="muted">嵌入图片 {{ cellImages.length }} 张已回填,点击可放大</span>
+          <span v-else-if="sheetNames.length > 1" class="muted">共 {{ sheetNames.length }} 个工作表</span>
         </div>
       </template>
       <el-tabs v-if="sheetNames.length > 1" v-model="activeSheet" @tab-change="showSheet()">
         <el-tab-pane v-for="n in sheetNames" :key="n" :label="n" :name="n" />
       </el-tabs>
-      <div class="sheet-scroll">
+      <div class="sheet-scroll" @click="onTableClick">
         <div class="sheet-table" v-html="tableHtml" />
       </div>
     </el-card>
 
-    <!-- 嵌入图片:WPS"图片嵌入单元格"或 xlsx 内嵌图形,单独提取展示 -->
-    <el-card v-if="cellImages.length" shadow="never" class="mt12">
+    <!-- 未回填的嵌入图片:无 DISPIMG 公式引用的图片(如浮动图片)兜底集中展示 -->
+    <el-card v-if="spareImages.length" shadow="never" class="mt12">
       <template #header>
         <div class="head">
-          <span>嵌入图片 · {{ cellImages.length }} 张</span>
-          <span class="muted">图片为"嵌入单元格"类型,原文件未记录所在行列,故集中展示</span>
+          <span>未回填的嵌入图片 · {{ spareImages.length }} 张</span>
+          <span class="muted">这些图片在原文件中没有对应的单元格公式引用,故集中展示</span>
         </div>
       </template>
       <div class="img-grid">
-        <div v-for="(im, i) in cellImages" :key="im.url" class="img-item">
-          <el-image
-            :src="im.url"
-            :preview-src-list="cellImages.map((x) => x.url)"
-            :initial-index="i"
-            :preview-teleported="true"
-            fit="cover"
-            lazy
-          >
+        <div v-for="im in spareImages" :key="im.url" class="img-item">
+          <el-image :src="im.url" fit="cover" lazy @click="viewerUrl = im.url">
             <template #placeholder><div class="img-loading" v-loading="true" /></template>
             <template #error><div class="img-error">加载失败</div></template>
           </el-image>
@@ -307,6 +401,14 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
         </div>
       </div>
     </el-card>
+
+    <!-- 大图查看(表格内与画廊共用) -->
+    <el-image-viewer
+      v-if="viewerUrl"
+      :url-list="[viewerUrl]"
+      @close="viewerUrl = ''"
+      @switch="viewerUrl = ''"
+    />
   </ToolPage>
 </template>
 
@@ -320,7 +422,7 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
 .loading { height: 160px; }
 
 .docx-scroll {
-  max-height: 70vh;
+  max-height: clamp(360px, calc(100vh - 330px), 2000px);
   overflow: auto;
   background: var(--el-fill-color-lighter);
   border-radius: 6px;
@@ -337,11 +439,11 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
   background: #fff;
 }
 
+/* 全屏页面下表格区域尽量吃满视口高度 */
 .sheet-scroll {
-  max-height: 70vh;
+  max-height: clamp(360px, calc(100vh - 330px), 2000px);
   overflow: auto;
 }
-/* SheetJS sheet_to_html 生成的 table 样式 */
 .sheet-table :deep(table) {
   border-collapse: collapse;
   font-size: 13px;
@@ -350,11 +452,23 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
   border: 1px solid var(--el-border-color-lighter);
   padding: 5px 10px;
   min-width: 80px;
-  white-space: nowrap;
+  vertical-align: middle;
 }
 .sheet-table :deep(tr:first-child td) {
   background: var(--el-fill-color-light);
   font-weight: 600;
+}
+/* 回填的嵌入单元格图片:限制在合理展示尺寸,点击可看原图 */
+.sheet-table :deep(td.has-img) {
+  padding: 4px;
+  background: #fff;
+}
+.sheet-table :deep(td.has-img img) {
+  display: block;
+  max-width: 360px;
+  max-height: 240px;
+  cursor: zoom-in;
+  border-radius: 2px;
 }
 
 .img-grid {
@@ -368,6 +482,7 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
   height: 160px;
   border-radius: 6px;
   background: var(--el-fill-color-lighter);
+  cursor: zoom-in;
 }
 .img-loading,
 .img-error {

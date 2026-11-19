@@ -203,6 +203,11 @@ export const TOOLS: ToolMeta[] = [
     short: '本地预览 Word(.docx)与 Excel(.xls/.xlsx)/CSV', keywords: ['word', 'doc', 'docx', 'xls', 'xlsx', 'excel', 'office', '文档', '预览', '在线查看', '嵌入图片'],
     desc: '在浏览器本地解析并预览 Office 文件,不上传:Word 按原始排版渲染(分页/表格/图片),Excel 多工作表切换表格化展示,WPS「图片嵌入单元格」自动回填到对应位置(点击放大);.doc 为 97-2003 二进制格式请另存为 .docx。',
   },
+  {
+    key: 'pdf-toolkit', path: '/pdf-toolkit', name: 'PDF 工具箱', icon: 'Files', category: 'data', accent: '#ef4444', isNew: true,
+    short: '合并 / 页面整理 / 拆分 / 水印页码 / 阅读', keywords: ['pdf', '合并', '拆分', '水印', '页码', '阅读', '旋转', '删除页', '排序', '工具'],
+    desc: '纯本地 PDF 处理套件:多文件合并、页面勾选/旋转/排序/删除后导出、按页拆分 ZIP、文字水印与页码(中文无需字体)、内置阅读器;文件不上传。',
+  },
 ]
 
 /** 所有工具快捷映射,key → meta */

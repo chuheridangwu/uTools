@@ -540,6 +540,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 踩坑记入第 7 节第 23、24 条(`innerHTML` 需要 `:deep()`;`v-if` 切换后要等 `nextTick`)。
 - 校验:着色/折叠/行号/压缩/XML/保存/复制/图片预览/编辑回写/错误/深色/全屏全部实测通过;`type-check` 0 错误、`build` 通过。
 
+### 2026-11-19 · 新增「PDF 工具箱」(`pdf-toolkit`)
+- 用户本轮明确要求做「PDF 全功能套件」(已覆盖此前 2026-11-12「B 类 PDF 裁剪不做」的结论,以最新指令为准)。
+- 新文件 `src/views/PdfToolkit.vue`,四个标签页:①合并多 PDF(可上移/下移排序,按列表顺序拼接);②页面整理(缩略图网格,勾选保留/旋转 ±90°/排序/删除,可导出整理后单文件或按页拆分 ZIP);③水印 + 页码(文字水印平铺/居中、透明度/旋转/间距;页码 6 个位置、4 种格式、起始页号);④本地阅读器(翻页/页码跳转/缩放/适应宽度)。
+- 技术:`pdf-lib`(新增依赖)负责文档重写与绘制,`pdfjs-dist` 负责解析/缩略图/阅读渲染,多文件导出复用 `utils/zip.ts` 的 `buildZip`。水印/页码用 canvas 把中文画成 PNG 再 `embedPng`,因此无需嵌入中文字体。
+- 两个关键实现点:
+  1. **worker 用 `?worker&url` + `GlobalWorkerOptions.workerSrc`**(而非手动 `new Worker` + `workerPort`)。实测后者在部分场景会出现 worker 只回 `ready`、后续 `GetDocRequest` 无响应而卡死;`workerSrc` 由 pdf.js 自行创建 worker,dev / 生产均稳定。
+  2. **`PDFDocumentProxy` 必须存 `shallowRef`(或普通变量),不能用 `ref`**:Vue 的深层响应式代理会让 pdf.js 访问私有字段 `#pagesNumber` 时抛「Cannot read private member」。
+- 注册:`tools.ts` 追加 `ToolMeta`(category data),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `pdf-toolkit`(缩略图网格 + 阅读器需整页)。
+- 校验:dev 与 `vite preview`(生产构建)双环境实测:3 文件合并 9 页、页面整理导出 4 页、按页拆分 4 个 PDF 的 ZIP、水印+页码输出 3 页有效 PDF、阅读器翻页/缩放/适应宽度均正常,控制台无错误;`type-check` 0 错误、`build` 通过。
+
 ---
 
 ## 9. 下次接手推荐动作

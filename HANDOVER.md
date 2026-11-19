@@ -8,8 +8,8 @@
 ## 0. 30 秒速览
 
 - **这是什么**:Vue 3 + TypeScript + Vite + Element Plus,「找Tab(https://www.zhaotab.com/)」风格的桌面化在线工具箱。
-- **两个形态**:有路由的「工具」(`config/tools.ts`,28 个)与无路由的「桌面应用」(`config/desktopApps.ts`,81 条注册、**2 条排除** → 79 个)。其中 **12 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
-- **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**107 条**),商店、桌面、搜索、命令面板全部只认这一份。
+- **两个形态**:有路由的「工具」(`config/tools.ts`,31 个)与无路由的「桌面应用」(`config/desktopApps.ts`,82 条注册、**2 条排除** → 80 个)。其中 **12 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
+- **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**111 条**),商店、桌面、搜索、命令面板全部只认这一份。
 - **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换;整页应用(FULLSCREEN_APPS 12 个)以独立路径二级页打开(见第 8 节 2026-11-12)。
 - **没有后端 → 已部分改变(2026-11-13)**:云同步 P1 上线——Supabase(邮箱验证码登录)+ 通用 `app_state` 表(kv 整包同步),离线优先,localStorage 仍是运行时数据源;首批同步 desktop-state / todo / sticky-notes / expense(见 `syncScopes.ts`);未配置 env 或未登录时完全等价纯本地模式。导出/导入 JSON 备份保留。
 - **不做**:游戏中心、3D 魔方、电台随身听、公众号排版;商店分类「游戏」「阅读」也不做(见 `EXCLUDED_KEYS`)。
@@ -61,13 +61,13 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 | 指标 | 数值 |
 | --- | --- |
-| `CATALOG` 总数 | **108** |
-| 桌面应用 / 路由工具 | 80 / 28(注册表 82 条,排除电台随身听、公众号排版) |
+| `CATALOG` 总数 | **111** |
+| 桌面应用 / 路由工具 | 80 / 31(注册表 82 条,排除电台随身听、公众号排版) |
 | 默认桌面图标 | 34 个(其余在商店「添加」) |
-| 商店卡片 | 108 张 |
+| 商店卡片 | 111 张 |
 
 分类计数(浏览器实测,与 README 一致):
-`全部 108 · 效率工具 21 · 开发工具 28 · 设计资源 13 · 生活实用 24 · 文本工具 3 · 图片工具 12 · 数据文件 5 · 局域网 1`
+`全部 111 · 效率工具 21 · 开发工具 29 · 设计资源 13 · 生活实用 24 · 文本工具 3 · 图片工具 13 · 数据文件 7 · 局域网 1`
 排除项泄漏 **0**。
 
 ### 3.2 构建 / 校验
@@ -94,6 +94,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
 ### 3.3 最近一次交付
+
+**证件照制作**(`views/IdPhoto.vue`,零新增依赖):四边中位色背景建模 + 连通域抠图、擦除/恢复画笔 + 撤销、纯色/渐变/透明换底、一寸二寸护照签证等 15 种标准尺寸 + 自定义 mm/DPI、5/6/7 寸相纸排版打印;整页应用 `/id-photo`。详见第 8 节 2026-11-19 条目。
 
 **PDF 转图片**(`views/apps/PdfToImage.vue` + `utils/zip.ts`,pdfjs-dist 懒加载):多页每页一张、页码范围、PNG/JPG×1x/2x/3x、ZIP 打包、竖向/横向长图拼接;整页应用 `/app/pdf-to-image`。详见第 8 节 2026-11-13 条目。
 
@@ -192,8 +194,8 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 src/
   main.ts / App.vue              # 入口;桌面模式下 App.vue 不渲染 <router-view>
   config/
-    tools.ts                     # 28 个「有路由的工具」注册表
-    desktopApps.ts               # 81 条「浮层应用」注册表(2 条被排除)
+    tools.ts                     # 31 个「有路由的工具」注册表
+    desktopApps.ts               # 82 条「浮层应用」注册表(2 条被排除)
     appCatalog.ts                # ★ 唯一目录源:CATALOG / CATALOG_MAP / STORE_CATEGORIES /
                                  #   DEFAULT_DESKTOP_IDS / RELEASE_BATCHES / searchCatalog
     wallpapers.ts                # 6 组渐变 + 5 张内联 SVG 壁纸(无外链)
@@ -210,7 +212,7 @@ src/
   router/index.ts                # import.meta.glob 动态路由 + ?p= query 深链接
   styles/desktop-pages.css       # 整页共用样式(--zt-* 变量,亮/暗两套)
   views/apps/*.vue               # 桌面应用视图
-  views/*.vue                    # 28 个路由工具视图 + Home
+  views/*.vue                    # 31 个路由工具视图 + Home
 ```
 
 关键设计(改动前必读):
@@ -550,11 +552,27 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 注册:`tools.ts` 追加 `ToolMeta`(category data),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `pdf-toolkit`(缩略图网格 + 阅读器需整页)。
 - 校验:dev 与 `vite preview`(生产构建)双环境实测:3 文件合并 9 页、页面整理导出 4 页、按页拆分 4 个 PDF 的 ZIP、水印+页码输出 3 页有效 PDF、阅读器翻页/缩放/适应宽度均正常,控制台无错误;`type-check` 0 错误、`build` 通过。
 
+### 2026-11-19 · 新增「证件照制作」(`id-photo`,一键去背景 / 换底色 / 标准尺寸)
+- 用户本轮要求「一键去背景、换底色、证件照尺寸(一寸/二寸/签证照)」,已覆盖此前 2026-11-12「B 类图片去背景不做」的结论,以最新指令为准。
+- 新文件 `src/views/IdPhoto.vue`(零新增依赖,单页 19KB / gzip 约 6KB),四段式流程:去背景 → 换底色 → 选尺寸 → 导出/排版。
+- **抠图算法(纯本地、可离线)**:先取图片四边像素各通道的**中位数**建立背景色模型(用中位数而非均值,避免肩膀/头发压到底边时把主体算进背景),再从「与模型相近的边框像素」出发做 4 邻域 BFS,只接受颜色接近模型的像素。
+  - 踩坑:最初用「相邻像素颜色差 ≤ 容差」做区域生长,会沿抗锯齿边缘一路爬进主体(合成测试中 99.8% 像素被当成背景);改成「全局背景模型 + 阈值」后正常。
+  - 提供容差(4–60)与边缘羽化(0–4px,对 alpha 做盒式模糊只柔化边界)。
+- 复杂背景/误删用**擦除 / 恢复画笔**手动修整(沿上一位置补间,避免快速移动断点),支持最多 8 步撤销;预览支持拖动平移、滚轮/按钮缩放、复位、参考线(中线 + 眼睛线 + 头部椭圆)。
+- 底色:白/蓝/红/浅蓝/灰预设 + 任意取色,支持纯色 / 渐变 / 透明(PNG);透明导出 JPG 时自动填白。
+- 尺寸:一寸 25×35、小/大一寸、二寸 35×49、小/大二寸、护照、港澳通行证、驾驶证、社保卡、美签 51×51、日签/韩签/申根 45×45,以及自定义 mm;DPI 300/350/600,实时换算输出像素。
+- 排版打印:按 5/6/7 寸相纸自动计算行列铺满,加裁剪虚线,导出 JPG。
+- 两个实现点:
+  1. **`setPointerCapture` 必须包 try/catch**:合成 `PointerEvent`(或某些触控笔)的 `pointerId` 不是活动指针时会抛异常,直接中断 `pointerdown` 后续逻辑导致画笔完全无效(自动化测试即栽在这里,真实鼠标不受影响)。
+  2. 工作图最长边限制 2000px(输出最大约 600px 足够),2000×1500 去背景实测约 0.2s。
+- 注册:`tools.ts` 追加 `ToolMeta`(category image,icon Camera,isNew),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `id-photo`(预览取景 + 画笔需整页)。
+- 校验(dev server,合成人像 600×800 / 4000×3000):透明导出四角 alpha=0、头部/身体 alpha=255;白底 JPG 角落 `#ffffff`;蓝底角落 `#428eda`;画笔擦除 → alpha 0、撤销 → 255、恢复 → 255;一寸 295×413、二寸 413×579、护照 390×567、美签 602×602、日签 531×531;6 寸排版 1200×1800;首页搜索「证件照 / 去背景 / zhengjianzhao / zjz / 一寸」均能命中;控制台无错误;`type-check` 0 错误、`build` 通过。
+
 ---
 
 ## 9. 下次接手推荐动作
 
 1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
-2. **B 类应用已全部被用户否决**(2026-11-12):PDF 裁剪 / 图片去背景 / 随机图片 / 浏览器插件 / 真云同步 —— **不要再提**。后续可推进的只剩:C 类工程债(LanTransfer 真实跨网人工验证:大厅 + 6 位配对码两种模式)、以及用户新提出的需求。TURN 中继已于更早明确「保持现状」,不再讨论。
+2. **B 类应用多数已被用户否决**(2026-11-12):PDF 裁剪 / 随机图片 / 浏览器插件 / 真云同步 —— **不要再提**。其中 **PDF 套件(2026-11-19 `pdf-toolkit`)与 图片去背景/证件照(2026-11-19 `id-photo`)已被用户点名要求并完成**,不算在否决范围内。后续可推进的只剩:C 类工程债(LanTransfer 真实跨网人工验证:大厅 + 6 位配对码两种模式)、以及用户新提出的需求。TURN 中继已于更早明确「保持现状」,不再讨论。
 3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
 4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。

@@ -287,6 +287,7 @@ export const FULLSCREEN_APPS = new Set<string>([
   'pdf-to-image',     // PDF 转图片(逐页预览 + 长图拼接)
   'office-viewer',    // Office 文档预览(大表格 + 嵌入图片回填)
   'pdf-toolkit',      // PDF 工具箱(页面缩略图网格 + 阅读器)
+  'id-photo',         // 证件照制作(预览取景 + 画笔修整)
 ])
 
 /** 整页打开应用的路径;非整页应用返回 null */

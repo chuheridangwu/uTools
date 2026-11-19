@@ -20,6 +20,12 @@ const activeTab = ref<TabKey>('merge')
 const busy = ref(false)
 const busyText = ref('')
 
+/** 文件选择框引用:按钮 @click 主动触发(不能用 <label> 包 <el-button>,button 是交互元素,label 不会转发点击) */
+const mergeInput = ref<HTMLInputElement>()
+const organizeInput = ref<HTMLInputElement>()
+const stampInput = ref<HTMLInputElement>()
+const readInput = ref<HTMLInputElement>()
+
 const fmtSize = (n: number) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(2)} MB`)
 
 /* ------------------------------ pdf.js 懒加载 ------------------------------ */
@@ -499,10 +505,8 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <label class="pick-btn">
-            <input type="file" accept=".pdf" multiple hidden @change="onMergePick" />
-            <el-button type="primary" :loading="busy">选择 PDF 文件</el-button>
-          </label>
+          <input ref="mergeInput" type="file" accept=".pdf" multiple hidden @change="onMergePick" />
+          <el-button type="primary" :loading="busy" @click="mergeInput?.click()">选择 PDF 文件</el-button>
 
           <div v-if="mergeList.length" class="merge-list">
             <div v-for="(m, i) in mergeList" :key="m.id" class="merge-item">
@@ -534,10 +538,8 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <div class="work-pick">
-            <label class="pick-btn">
-              <input type="file" accept=".pdf" hidden @change="onWorkPick" />
-              <el-button type="primary" :loading="busy">选择 PDF</el-button>
-            </label>
+            <input ref="organizeInput" type="file" accept=".pdf" hidden @change="onWorkPick" />
+            <el-button type="primary" :loading="busy" @click="organizeInput?.click()">选择 PDF</el-button>
             <template v-if="workPages.length">
               <el-button size="small" @click="selectAll(true)">全选</el-button>
               <el-button size="small" @click="selectAll(false)">全不选</el-button>
@@ -578,10 +580,8 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <div class="work-pick">
-            <label class="pick-btn">
-              <input type="file" accept=".pdf" hidden @change="onWorkPick" />
-              <el-button type="primary" :loading="busy">选择 PDF</el-button>
-            </label>
+            <input ref="stampInput" type="file" accept=".pdf" hidden @change="onWorkPick" />
+            <el-button type="primary" :loading="busy" @click="stampInput?.click()">选择 PDF</el-button>
           </div>
 
           <el-form label-width="96px" class="stamp-form" :disabled="!workBytes">
@@ -647,10 +647,8 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <div class="work-pick">
-            <label class="pick-btn">
-              <input type="file" accept=".pdf" hidden @change="onWorkPick" />
-              <el-button type="primary" :loading="busy">选择 PDF</el-button>
-            </label>
+            <input ref="readInput" type="file" accept=".pdf" hidden @change="onWorkPick" />
+            <el-button type="primary" :loading="busy" @click="readInput?.click()">选择 PDF</el-button>
             <template v-if="workDoc">
               <el-button size="small" :disabled="viewerPage <= 1" @click="gotoPage(-1)">上一页</el-button>
               <span class="muted">
@@ -685,7 +683,6 @@ onBeforeUnmount(() => {
 .ml8 { margin-left: 8px; }
 .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
 .work-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-.pick-btn { display: inline-block; }
 
 /* 合并列表 */
 .merge-list { margin-top: 14px; }

@@ -194,6 +194,15 @@ html.dark .dt-page {
   background: var(--el-bg-color-page);
 }
 
+/* 移动端:工具页改由 body 滚动(见 styles/index.css 说明) */
+@media (max-width: 768px) {
+  .dt-page {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+}
+
 .app-main-wrap {
   display: flex;
   flex-direction: column;

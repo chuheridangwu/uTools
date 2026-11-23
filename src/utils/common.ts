@@ -25,6 +25,38 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * 读取剪贴板文本。
+ *  - HTTPS / localhost(安全上下文):用 `navigator.clipboard.readText()`,需用户手势触发;
+ *  - 普通 HTTP(如局域网 http://192.168.x.x):浏览器不暴露 Clipboard API,返回 null,
+ *    调用方应提示用户「长按输入框 → 粘贴」。
+ * 返回 null 表示「读不到」(无权限 / 非安全上下文 / 用户拒绝),空字符串表示剪贴板为空。
+ */
+export async function readClipboardText(): Promise<string | null> {
+  try {
+    if (navigator.clipboard?.readText) {
+      return (await navigator.clipboard.readText()) ?? ''
+    }
+  } catch {
+    /* 权限被拒或浏览器限制,继续尝试旧接口 */
+  }
+  // 旧接口:部分浏览器(尤其桌面 Safari)在用户手势内仍允许
+  try {
+    const ta = document.createElement('textarea')
+    ta.style.position = 'fixed'
+    ta.style.top = '-9999px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    const ok = document.execCommand('paste')
+    const value = ta.value
+    document.body.removeChild(ta)
+    return ok ? value : null
+  } catch {
+    return null
+  }
+}
+
 /** 通过 Blob + a[download] 保存文件(浏览器本地导出统一入口;也支持直接传普通文本) */
 export function downloadBlob(blob: Blob | string, filename: string): void {
   const target = typeof blob === 'string' ? new Blob([blob], { type: 'text/plain;charset=utf-8' }) : blob

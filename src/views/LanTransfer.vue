@@ -10,7 +10,7 @@
  * WebRTC DataChannel 设备直连,不经过任何服务器中转。另有「6 位配对码」模式:
  * 双方在公共通道的同一个 6 位数字房间里握手,适合不想出现在大厅时使用。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 import {
@@ -18,6 +18,7 @@ import {
   Close,
   CopyDocument,
   Delete,
+  DocumentCopy,
   Download,
   MagicStick,
   Monitor,
@@ -28,7 +29,7 @@ import {
   UploadFilled,
 } from '@element-plus/icons-vue'
 import ToolPage from '@/components/ToolPage.vue'
-import { copyText, formatSize } from '@/utils/common'
+import { copyText, formatSize, readClipboardText } from '@/utils/common'
 
 /* ------------------------------ 类型 ------------------------------ */
 interface Peer {
@@ -119,6 +120,7 @@ const dragOver = ref(false)
 /** 文本互传 */
 const myText = ref('')
 const receivedTexts = ref<string[]>([])
+const textAreaEl = ref<HTMLTextAreaElement>()
 
 /** 速度显示 */
 const speedText = ref('')
@@ -759,6 +761,48 @@ async function sendText() {
   myText.value = ''
 }
 
+/**
+ * 一键粘贴。
+ * 安全上下文(HTTPS / localhost)可直接读剪贴板;局域网 HTTP 下浏览器不暴露该 API,
+ * 此时聚焦输入框并提示用户长按选择「粘贴」(系统菜单不受页面控制)。
+ */
+async function pasteIntoText() {
+  const text = await readClipboardText()
+  if (text === null) {
+    ElMessage.warning('当前浏览器不允许网页直接读取剪贴板,请长按输入框选择「粘贴」')
+    textAreaEl.value?.focus()
+    return
+  }
+  if (!text) {
+    ElMessage.info('剪贴板里没有文字')
+    textAreaEl.value?.focus()
+    return
+  }
+  myText.value = text.trim()
+  await nextTick()
+  autoGrow()
+  textAreaEl.value?.focus()
+}
+
+/** 输入框按内容自动增高(1~5 行) */
+function autoGrow() {
+  const el = textAreaEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 140)}px`
+}
+
+/**
+ * 聚焦后把输入框滚到可视区中间。
+ * 安卓上软键盘弹出后布局视口不会立即变化,输入框常被键盘挡住,
+ * 延迟一帧再滚动可以等浏览器完成视口调整。
+ */
+function onTextFocus() {
+  window.setTimeout(() => {
+    textAreaEl.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, 300)
+}
+
 const overallProgress = computed(() => {
   const total = sendQueue.value.reduce((s, q) => s + q.size, 0)
   const sent = sendQueue.value.reduce((s, q) => s + q.sent, 0)
@@ -1245,8 +1289,28 @@ onMounted(() => {
           <span class="panel-title">文本互传</span>
         </div>
         <div class="text-row">
-          <el-input v-model="myText" placeholder="输入要发送的文本或链接" clearable @keydown.enter="sendText" />
-          <el-button type="primary" :icon="Position" @click="sendText">发送</el-button>
+          <!-- 用原生 textarea:不套 el-input 包装层,手机上点击/长按粘贴的目标就是输入框本身 -->
+          <textarea
+            ref="textAreaEl"
+            v-model="myText"
+            class="text-input"
+            rows="1"
+            placeholder="输入要发送的文本或链接"
+            enterkeyhint="send"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            @input="autoGrow"
+            @focus="onTextFocus"
+            @keydown.enter.exact.prevent="sendText"
+          />
+          <div class="text-acts">
+            <el-button :icon="DocumentCopy" @click="pasteIntoText">粘贴</el-button>
+            <el-button type="primary" :icon="Position" @click="sendText">发送</el-button>
+          </div>
+        </div>
+        <div class="hint text-hint">
+          手机端长按输入框可直接粘贴;桌面端 Enter 发送,Shift + Enter 换行。
         </div>
         <div v-if="receivedTexts.length" class="queue">
           <div v-for="(t, i) in receivedTexts" :key="i" class="text-item">
@@ -1496,6 +1560,55 @@ onMounted(() => {
 .text-row {
   display: flex;
   gap: 8px;
+  align-items: flex-start;
+}
+/* 原生 textarea:16px 避免 iOS 聚焦放大;显式允许选中/长按菜单,并禁用 Android 双击缩放干扰 */
+.text-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  max-height: 140px;
+  padding: 9px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+}
+.text-input::placeholder {
+  color: var(--el-text-color-placeholder);
+}
+.text-input:focus {
+  border-color: var(--el-color-primary);
+}
+.text-acts {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.text-hint {
+  margin-top: 8px;
+}
+@media (max-width: 560px) {
+  .text-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .text-acts {
+    justify-content: flex-end;
+  }
 }
 .text-item {
   display: flex;

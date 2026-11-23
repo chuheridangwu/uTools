@@ -42,6 +42,23 @@ body {
   overflow: hidden; /* 全局滚动交给布局内部区域 */
 }
 
+/*
+ * 移动端工具页改由 body 滚动。
+ * 安卓部分浏览器 / WebView 在「body 锁定 + 内部 overflow 容器」的组合下,
+ * 点击输入框可能不聚焦、软键盘不弹出;让文档本身滚动可以规避。
+ * 用 :has(.dt-page) 限定只作用于「整页工具」,不影响桌面首页。
+ */
+@media (max-width: 768px) {
+  body:has(.dt-page) {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  body:has(.dt-page) #app {
+    height: auto;
+    min-height: 100%;
+  }
+}
+
 /* ---------- 通用布局工具类 ---------- */
 .flex { display: flex; }
 .flex1 { flex: 1; min-width: 0; }

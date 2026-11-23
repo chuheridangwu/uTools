@@ -568,6 +568,19 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 注册:`tools.ts` 追加 `ToolMeta`(category image,icon Camera,isNew),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `id-photo`(预览取景 + 画笔需整页)。
 - 校验(dev server,合成人像 600×800 / 4000×3000):透明导出四角 alpha=0、头部/身体 alpha=255;白底 JPG 角落 `#ffffff`;蓝底角落 `#428eda`;画笔擦除 → alpha 0、撤销 → 255、恢复 → 255;一寸 295×413、二寸 413×579、护照 390×567、美签 602×602、日签 531×531;6 寸排版 1200×1800;首页搜索「证件照 / 去背景 / zhengjianzhao / zjz / 一寸」均能命中;控制台无错误;`type-check` 0 错误、`build` 通过。
 
+### 2026-11-23 · 修复局域网「文本互传」手机端点输入框 / 粘贴无反应(`5aabbbe`)
+- 现象:安卓手机上点文本互传输入框没反应、长按也出不来粘贴菜单;用户确认剪贴板里有文字。
+- 排查结论:**代码里没有拦截粘贴**——`el-input` 计算样式 `user-select:auto`、无 `pointer-events:none`、无全局 `touchstart/contextmenu` 处理器、输入框未被任何元素遮挡(`elementFromPoint` 命中输入框本身)。真正原因分两层:
+  1. **非安全上下文**:局域网 `http://192.168.x.x` 下浏览器不暴露 `navigator.clipboard`,网页无法一键读剪贴板,只能靠系统长按菜单;部分安卓浏览器/WebView 在 HTTP 页面对剪贴板有额外限制。
+  2. **移动端布局**:`body { overflow:hidden }` + `.dt-page` 内部 `overflow-y:auto` 的嵌套滚动容器,安卓 WebView 下点输入框可能不聚焦/软键盘不弹。
+- 修复:
+  1. 文本输入从 `<el-input type="textarea">` 换成**原生 `<textarea>`**(去掉包装层,点击/长按目标就是输入框本身),字号 16px(避免 iOS 聚焦放大),显式 `user-select:text` + `-webkit-touch-callout:default` + `touch-action:manipulation`。
+  2. 移动端(≤768px)工具页改由 **body 滚动**:`body:has(.dt-page){overflow-y:auto}` + `#app{height:auto}` + `.dt-page{height:auto;overflow:visible}`;用 `:has()` 限定只影响整页工具,不影响桌面首页。
+  3. 新增 `readClipboardText()`(`utils/common.ts`)与「粘贴」按钮:安全上下文直接读剪贴板;HTTP 下提示「长按输入框选择粘贴」并聚焦。
+  4. 聚焦后延迟 300ms `scrollIntoView({block:'center'})`,避免输入框被软键盘挡住。
+  5. 输入框按内容自动增高(1~5 行),Enter 发送 / Shift+Enter 换行。
+- 校验(dev server):iframe 390px 宽下媒体查询生效(body `overflow-y:auto`、`.dt-page` `overflow:visible`);textarea 字号 16px、聚焦成功、4 行内容高度 44→114px;「粘贴」按钮 stub 剪贴板后正确填入并聚焦,失败路径弹出提示;`type-check` 0 错误、`build` 通过。
+
 ---
 
 ## 9. 下次接手推荐动作

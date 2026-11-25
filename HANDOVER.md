@@ -568,6 +568,15 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - 注册:`tools.ts` 追加 `ToolMeta`(category image,icon Camera,isNew),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `id-photo`(预览取景 + 画笔需整页)。
 - 校验(dev server,合成人像 600×800 / 4000×3000):透明导出四角 alpha=0、头部/身体 alpha=255;白底 JPG 角落 `#ffffff`;蓝底角落 `#428eda`;画笔擦除 → alpha 0、撤销 → 255、恢复 → 255;一寸 295×413、二寸 413×579、护照 390×567、美签 602×602、日签 531×531;6 寸排版 1200×1800;首页搜索「证件照 / 去背景 / zhengjianzhao / zjz / 一寸」均能命中;控制台无错误;`type-check` 0 错误、`build` 通过。
 
+### 2026-11-25 · 依赖清理:卸载 jimp/lodash-es,审计 30 high → 1(`82de697`)
+- `jimp` 代码中 **0 处 import**(历史遗留),却经 `zod` 传递链拖入 **30 个 high 漏洞告警**、占 node_modules 3.3MB → 直接卸载;`lodash-es` 同样 0 引用(element-plus 自行捆绑,不需要显式声明),连同 `@types/lodash-es` 一起移除。
+- `npm audit --omit=dev` 30 high → **1 high**:只剩 `xlsx`(SheetJS 0.18.5)的原型污染 + ReDoS,**官方无修复版**。OfficeViewer 仍在用它解析 xlsx(本地解析用户自己的文件,风险可控);中期可评估换 `exceljs`,但要改 OfficeViewer 的读写逻辑并回归测试。
+- 小版本升级:vue 3.5.46、vue-router 4.6.5、marked 18.3.0、cronstrue 3.50.0、sql-formatter 15.10.0、cron-parser 5.10.6、@supabase/supabase-js 2.119.2。**pinia 4 / vue-router 5 / Type{Script 7 是大版本,有破坏性,未动**。
+- lock 用 npm 10.9.2 `install --package-lock-only` 重新生成(`unplugin` 缺项补齐),npm 10.9.2 与 npm 11.19 的 `ci --dry-run` 均通过。
+- 回归实测:OfficeViewer 用 SheetJS 现场生成真 xlsx(中文+数字 3×2)解析正常;时间戳 / Cron 解析 / Markdown 编辑器 / JSON 生成器 / UUID 生成器(批量 10 条) / 哈希工具全部渲染正常、控制台 0 错误;`type-check` 0 错误、`build` 通过。
+- 注意:`npm uninstall` 不会自动补齐 lock 里 devDependencies 的缺失项(如 `unplugin`),删完依赖后要跑一次 `npx npm@10.9.2 install --package-lock-only` 再校验 `ci`。
+
+
 ### 2026-11-23 · 修复局域网「文本互传」手机端点输入框 / 粘贴无反应(`5aabbbe`)
 - 现象:安卓手机上点文本互传输入框没反应、长按也出不来粘贴菜单;用户确认剪贴板里有文字。
 - 排查结论:**代码里没有拦截粘贴**——`el-input` 计算样式 `user-select:auto`、无 `pointer-events:none`、无全局 `touchstart/contextmenu` 处理器、输入框未被任何元素遮挡(`elementFromPoint` 命中输入框本身)。真正原因分两层:

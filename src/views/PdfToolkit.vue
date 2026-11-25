@@ -15,7 +15,7 @@ import ToolPage from '@/components/ToolPage.vue'
 import { buildZip, downloadBlob } from '@/utils/zip'
 
 /* ------------------------------ 通用状态 ------------------------------ */
-type TabKey = 'merge' | 'organize' | 'stamp' | 'read'
+type TabKey = 'merge' | 'organize' | 'stamp' | 'protect' | 'read'
 const activeTab = ref<TabKey>('merge')
 const busy = ref(false)
 const busyText = ref('')
@@ -24,6 +24,7 @@ const busyText = ref('')
 const mergeInput = ref<HTMLInputElement>()
 const organizeInput = ref<HTMLInputElement>()
 const stampInput = ref<HTMLInputElement>()
+const protectInput = ref<HTMLInputElement>()
 const readInput = ref<HTMLInputElement>()
 
 const fmtSize = (n: number) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(2)} MB`)
@@ -147,6 +148,18 @@ async function onWorkPick(e: Event) {
   const f = input.files?.[0]
   input.value = ''
   if (!f) return
+  // 解密模式:加密 Tab 里选择 .enc 文件时,不解析为 PDF,只登记文件
+  const isEnc = /\.enc$/i.test(f.name)
+  if (isEnc) {
+    workFile.value = f
+    workBytes.value = null
+    workPages.value = []
+    workDoc.value?.cleanup()
+    workDoc.value = null
+    protectMode.value = 'decrypt'
+    ElMessage.info('已选择 .enc 文件,请输入密码解密')
+    return
+  }
   busy.value = true
   busyText.value = '正在解析 PDF…'
   workPages.value = []
@@ -409,6 +422,162 @@ function formatPageNo(n: number, total: number, fmt: string): string {
 }
 
 /* ====================================================================== *
+ * 四、压缩(逐页重采样,可灰度)/ AES-GCM 加密(.enc)
+ * ====================================================================== */
+const compressCfg = ref({
+  dpi: 120,          // 渲染 DPI(原稿常见 72-150;120 足够屏幕阅读)
+  quality: 0.75,     // JPEG 质量
+  grayscale: false,  // 转灰度(文本类文档体积再降一半)
+})
+const compressStats = ref<{ before: number; after: number } | null>(null)
+
+async function compressPdf() {
+  if (!workBytes.value && !workFile.value) {
+    ElMessage.warning('请先选择 PDF')
+    return
+  }
+  busy.value = true
+  busyText.value = '正在压缩…'
+  try {
+    // 逐页用 pdf.js 渲染成 canvas,再重建文档
+    const pj = await loadPdfjs()
+    const src = workBytes.value!
+    const doc = await pj.getDocument({ data: src.slice(0) }).promise
+    const out = await PDFDocument.create()
+    const dpiScale = compressCfg.value.dpi / 72
+    for (let i = 1; i <= doc.numPages; i++) {
+      busyText.value = `正在压缩 ${i}/${doc.numPages} 页…`
+      const page = await doc.getPage(i)
+      const vp = page.getViewport({ scale: dpiScale })
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.floor(vp.width))
+      c.height = Math.max(1, Math.floor(vp.height))
+      const ctx = c.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, c.width, c.height)
+      await page.render({ canvasContext: ctx, viewport: vp, background: '#ffffff' } as Parameters<typeof page.render>[0]).promise
+      if (compressCfg.value.grayscale) toGrayscale(ctx, c.width, c.height)
+      const jpeg = await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b ?? new Blob()), 'image/jpeg', compressCfg.value.quality))
+      const png = new Uint8Array(await jpeg.arrayBuffer())
+      const img = await out.embedJpg(png)
+      const origVp = page.getViewport({ scale: 1 })
+      const p = out.addPage([origVp.width, origVp.height])
+      p.drawImage(img, { x: 0, y: 0, width: origVp.width, height: origVp.height })
+    }
+    const bytes = await out.save({ useObjectStreams: true })
+    const after = bytes.length
+    const before = workBytes.value!.length
+    compressStats.value = { before, after }
+    const ext = compressCfg.value.grayscale ? '-压缩灰度' : '-压缩'
+    downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }), baseName() + ext + '.pdf')
+    const pct = Math.max(0, Math.round((1 - after / before) * 100))
+    ElMessage.success(`压缩完成:${fmtSize(before)} → ${fmtSize(after)}(省 ${pct}%)`)
+    try { (doc as unknown as { destroy?: () => void }).destroy?.() } catch { /* 旧版本可能没有 */ }
+  } catch (err) {
+    ElMessage.error(`压缩失败: ${(err as Error).message}`)
+  } finally {
+    busy.value = false
+    busyText.value = ''
+  }
+}
+
+/** 就地灰度化 */
+function toGrayscale(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const d = ctx.getImageData(0, 0, w, h)
+  const px = d.data
+  for (let i = 0; i < px.length; i += 4) {
+    const g = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0
+    px[i] = px[i + 1] = px[i + 2] = g
+  }
+  ctx.putImageData(d, 0, 0)
+}
+
+/* ====================================================================== *
+ * 五、加密 / 解密(.enc,AES-GCM 256)
+ * ====================================================================== */
+const protectPwd = ref('')
+const protectPwd2 = ref('')
+const protectMode = ref<'encrypt' | 'decrypt'>('encrypt')
+
+/** 文件 → AES-GCM 加密的 .enc(用户自留密码,解密也用本工具;非 PDF 权限密码) */
+async function deriveKey(pwd: string, salt: Uint8Array): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveKey'])
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt as unknown as BufferSource, iterations: 150000, hash: 'SHA-256' },
+    base,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
+async function protectRun() {
+  if (!workFile.value) {
+    ElMessage.warning('请先选择 PDF')
+    return
+  }
+  if (protectMode.value === 'encrypt') {
+    if (protectPwd.value.length < 6) {
+      ElMessage.warning('密码至少 6 位')
+      return
+    }
+    if (protectPwd.value !== protectPwd2.value) {
+      ElMessage.warning('两次输入的密码不一致')
+      return
+    }
+    busy.value = true
+    busyText.value = '正在加密…'
+    try {
+      const plain = new Uint8Array(await workFile.value.arrayBuffer())
+      const salt = crypto.getRandomValues(new Uint8Array(16))
+      const iv = crypto.getRandomValues(new Uint8Array(12))
+      const key = await deriveKey(protectPwd.value, salt)
+      const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as unknown as BufferSource }, key, plain as unknown as BufferSource))
+      // 文件结构:magic(4) + salt(16) + iv(12) + cipher
+      const magic = new TextEncoder().encode('UPDF')
+      const payload = new Uint8Array(magic.length + salt.length + iv.length + enc.length)
+      let o = 0
+      payload.set(magic, o); o += magic.length
+      payload.set(salt, o); o += salt.length
+      payload.set(iv, o); o += iv.length
+      payload.set(enc, o)
+      downloadBlob(new Blob([payload as unknown as BlobPart], { type: 'application/octet-stream' }), baseName() + '.enc')
+      ElMessage.success('已加密;请妥善保存密码,忘记密码无法恢复')
+    } catch (e) {
+      ElMessage.error(`加密失败: ${(e as Error).message}`)
+    } finally {
+      busy.value = false
+      busyText.value = ''
+    }
+    return
+  }
+  // 解密
+  if (!protectPwd.value) {
+    ElMessage.warning('请输入密码')
+    return
+  }
+  busy.value = true
+  busyText.value = '正在解密…'
+  try {
+    const data = new Uint8Array(await workFile.value.arrayBuffer())
+    const magic = new TextDecoder().decode(data.slice(0, 4))
+    if (magic !== 'UPDF') throw new Error('不是本工具加密的 .enc 文件')
+    const salt = data.slice(4, 20)
+    const iv = data.slice(20, 32)
+    const cipher = data.slice(32)
+    const key = await deriveKey(protectPwd.value, salt)
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as unknown as BufferSource }, key, cipher as unknown as BufferSource)
+    downloadBlob(new Blob([plain], { type: 'application/pdf' }), baseName().replace(/\.enc$/i, '') + '-解密.pdf')
+    ElMessage.success('解密成功')
+  } catch {
+    ElMessage.error('解密失败:密码错误或文件已损坏')
+  } finally {
+    busy.value = false
+    busyText.value = ''
+  }
+}
+
+/* ====================================================================== *
  * 四、阅读器
  * ====================================================================== */
 const viewerCanvas = ref<HTMLCanvasElement>()
@@ -634,6 +803,70 @@ onBeforeUnmount(() => {
           <div v-if="workBytes" class="actions">
             <el-button type="primary" :loading="busy" @click="applyStamp">生成并下载</el-button>
           </div>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ───────────── 加密 / 解密 + 压缩 ───────────── -->
+      <el-tab-pane label="压缩 / 加密" name="protect">
+        <el-card shadow="never">
+          <template #header>
+            <div class="head">
+              <span>压缩(逐页重采样)与 AES-GCM 加密;全部本地完成</span>
+              <span v-if="workFile" class="muted">{{ workFile.name }} · {{ fmtSize(workFile.size) }}</span>
+            </div>
+          </template>
+          <div class="work-pick">
+            <input ref="protectInput" type="file" accept=".pdf,.enc" hidden @change="onWorkPick" />
+            <el-button type="primary" :loading="busy" @click="protectInput?.click()">选择 PDF / .enc</el-button>
+          </div>
+
+          <el-form label-width="100px" class="stamp-form">
+            <el-divider content-position="left">压缩(栅格化重建,文字不可再选中)</el-divider>
+            <el-form-item label="渲染 DPI">
+              <el-select v-model="compressCfg.dpi" style="width: 140px">
+                <el-option :value="96" label="96(更小,较模糊)" />
+                <el-option :value="120" label="120(推荐)" />
+                <el-option :value="150" label="150(较清晰)" />
+                <el-option :value="200" label="200(接近原图)" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="JPEG 质量">
+              <el-slider v-model="compressCfg.quality" :min="0.3" :max="0.95" :step="0.05" style="width: 220px" />
+              <span class="muted ml8">{{ Math.round(compressCfg.quality * 100) }}%</span>
+            </el-form-item>
+            <el-form-item label="灰度化">
+              <el-switch v-model="compressCfg.grayscale" />
+              <span class="muted ml8">文本扫描件再省约一半体积</span>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="busy" :disabled="!workFile" @click="compressPdf">开始压缩</el-button>
+              <span v-if="compressStats" class="muted ml8">
+                {{ fmtSize(compressStats.before) }} → {{ fmtSize(compressStats.after) }}
+              </span>
+            </el-form-item>
+
+            <el-divider content-position="left">加密 / 解密(AES-GCM 256,密码自留)</el-divider>
+            <el-form-item label="模式">
+              <el-radio-group v-model="protectMode" size="small">
+                <el-radio-button value="encrypt">加密(PDF → .enc)</el-radio-button>
+                <el-radio-button value="decrypt">解密(.enc → PDF)</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input v-model="protectPwd" type="password" show-password style="max-width: 260px" placeholder="至少 6 位" />
+            </el-form-item>
+            <el-form-item v-if="protectMode === 'encrypt'" label="确认密码">
+              <el-input v-model="protectPwd2" type="password" show-password style="max-width: 260px" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="busy" :disabled="!workFile" @click="protectRun">
+                {{ protectMode === 'encrypt' ? '加密并下载' : '解密并下载' }}
+              </el-button>
+            </el-form-item>
+            <p class="tip" style="margin: 0; color: var(--el-text-color-placeholder); font-size: 12px">
+              说明:这里的加密是用 AES-256-GCM 把整个 PDF 打包成 .enc 文件(需回本工具解密),不是 PDF 阅读器的口令保护——pdf-lib 暂不支持写标准 PDF 权限密码。
+            </p>
+          </el-form>
         </el-card>
       </el-tab-pane>
 

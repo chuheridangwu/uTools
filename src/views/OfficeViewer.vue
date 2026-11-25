@@ -13,7 +13,7 @@ import { computed, ref, useTemplateRef } from 'vue'
 import { ElMessage } from 'element-plus'
 import { renderAsync } from 'docx-preview'
 import * as XLSX from 'xlsx'
-import { readZip } from '@/utils/zip'
+import { downloadBlob, readZip } from '@/utils/zip'
 import ToolPage from '@/components/ToolPage.vue'
 
 type Kind = 'docx' | 'excel' | 'csv' | 'doc' | 'unknown'
@@ -269,6 +269,38 @@ function showSheet() {
   sheetCols.value = range ? range.e.c - range.s.c + 1 : 0
 }
 
+/** 导出当前工作表为 CSV(UTF-8 BOM,Excel 打开中文不乱码) */
+function exportCsv() {
+  const sheet = cachedWb?.Sheets[activeSheet.value]
+  if (!sheet) {
+    ElMessage.warning('请先选择一个工作表')
+    return
+  }
+  const csv = XLSX.utils.sheet_to_csv(sheet)
+  downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), stripExt(fileName.value) + '-' + activeSheet.value + '.csv')
+  ElMessage.success(`已导出 ${activeSheet.value}.csv`)
+}
+
+/** 导出当前工作表为 JSON(一行一对象,空单元格为空字符串) */
+function exportJson() {
+  const sheet = cachedWb?.Sheets[activeSheet.value]
+  if (!sheet) {
+    ElMessage.warning('请先选择一个工作表')
+    return
+  }
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+  if (!rows.length) {
+    ElMessage.warning('该工作表没有可导出的数据行')
+    return
+  }
+  downloadBlob(new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' }), stripExt(fileName.value) + '-' + activeSheet.value + '.json')
+  ElMessage.success(`已导出 ${rows.length} 行 JSON`)
+}
+
+function stripExt(name: string) {
+  return name.replace(/\.[^.]+$/, '')
+}
+
 async function onFile(f: File) {
   file.value = f
   errMsg.value = ''
@@ -371,8 +403,12 @@ const onUploadChange = (f: UploadFile) => onFile(f.raw as File)
       <template #header>
         <div class="head">
           <span>{{ fileName }} · {{ sheetRows }} 行 × {{ sheetCols }} 列</span>
-          <span v-if="cellImages.length" class="muted">嵌入图片 {{ cellImages.length }} 张已回填,点击可放大</span>
-          <span v-else-if="sheetNames.length > 1" class="muted">共 {{ sheetNames.length }} 个工作表</span>
+          <span class="meta">
+            <el-button size="small" @click="exportCsv">导出 CSV</el-button>
+            <el-button size="small" @click="exportJson">导出 JSON</el-button>
+            <span v-if="cellImages.length" class="muted">嵌入图片 {{ cellImages.length }} 张已回填,点击可放大</span>
+            <span v-else-if="sheetNames.length > 1" class="muted">共 {{ sheetNames.length }} 个工作表</span>
+          </span>
         </div>
       </template>
       <el-tabs v-if="sheetNames.length > 1" v-model="activeSheet" @tab-change="showSheet()">

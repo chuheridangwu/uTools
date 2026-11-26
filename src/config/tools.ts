@@ -18,7 +18,7 @@ export const CATEGORIES: ToolCategory[] = [
   { key: 'lan', label: '局域网', icon: 'Wifi', desc: '同网设备直连互传文件与文本' },
 ]
 
-/** 全部工具注册(共 27 个) */
+/** 全部工具注册(共 31 个) */
 export const TOOLS: ToolMeta[] = [
   // ────────────────────────── 开发工具 ──────────────────────────
   {
@@ -110,8 +110,9 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'translator', path: '/translator', name: '翻译工具', icon: 'ChatLineSquare',
     category: 'text', accent: '#0ea5e9',
-    short: '多语言互译(MyMemory 引擎)', keywords: ['翻译', 'translate', 'english', '中英'],
-    desc: '基于 MyMemory 免费翻译接口的多语言互译,支持语种自动检测与语向互换。',
+    short: '多语言互译(LibreTranslate → MyMemory)',
+    keywords: ['翻译', 'translate', 'english', '中英', 'libretranslate', 'mymemory'],
+    desc: '双引擎多语言互译:LibreTranslate 优先、失败自动降级 MyMemory;支持 13 种语言、语种自动检测与语向互换,长文本自动分段翻译,本地保留最近 30 条翻译历史可回填。',
   },
 
   // ────────────────────────── 图片工具 ──────────────────────────
@@ -124,8 +125,9 @@ export const TOOLS: ToolMeta[] = [
   {
     key: 'image-batch-process', path: '/image-batch-process', name: '图片批量处理', icon: 'PictureFilled',
     category: 'image', accent: '#8b5cf6', isNew: true,
-    short: '统一缩放/压缩/改格式后逐个下载', keywords: ['批量', '压缩', '缩放', 'resize', '处理'],
-    desc: '对一批图片统一执行比例缩放、质量压缩与格式转换,逐个预览体积收益后一键全部下载。',
+    short: '统一缩放/压缩/改格式,打包 ZIP 或逐个下载',
+    keywords: ['批量', '压缩', '缩放', 'resize', '处理', 'zip', '重命名'],
+    desc: '对一批图片统一执行比例缩放、质量压缩与格式转换,逐个预览体积收益;可按保留原名 / 前缀+序号 / 日期+序号 / 纯序号重命名(可设起始序号),一键打包 ZIP 或逐个下载。',
   },
   {
     key: 'image-watermark', path: '/image-watermark', name: '图片水印', icon: 'Brush',

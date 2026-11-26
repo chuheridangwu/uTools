@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * 翻译工具
- * 双免费源:MyMemory(主)+ LibreTranslate(mirrors 轮询,故障切换)。
- *  - 自动检测:启发式(中日韩俄英);MyMemory 不支持 auto,需先判定
+ * 双免费源:LibreTranslate(公开镜像轮询,质量优)+ MyMemory(兜底)。
+ *  - 自动降级:先 LibreTranslate,失败再走 MyMemory(见 translateOnce)
+ *  - 自动检测:启发式(中日韩俄英等),判定源语种后再调用引擎
  *  - 长文本:>490 字符自动按句切分逐段翻译再拼接(MyMemory 免费档限制)
  *  - 历史:localStorage 最近 30 条,可回填
  */

@@ -130,7 +130,11 @@ function pinyinAliases(name: string): string[] {
   )]
 }
 
-/** 最近四批新增应用(按时间从旧到新),用于「最新上架」 */
+/**
+ * 新增应用批次(按时间从旧到新),用于商店「最新上架」排序。
+ * ★ 每新增一个应用都要在这里追加一批(路由工具与桌面应用都算),
+ *   漏了的话 releasedAt = 0,该应用不会出现在「最新上架」。
+ */
 const RELEASE_BATCHES: string[][] = [
   ['text-to-speech', 'ascii-art', 'id-card-parser', 'password-strength', 'workday-calendar'],
   ['roman-numerals', 'date-calculator', 'loan-calculator', 'random-tool', 'habit-tracker'],
@@ -144,6 +148,9 @@ const RELEASE_BATCHES: string[][] = [
   ['unzip-tool'],
   ['svg-editor'],
   ['pdf-to-image'],
+  ['office-viewer'],
+  ['pdf-toolkit'],
+  ['id-photo'],
 ]
 
 const RELEASE_INDEX = new Map<string, number>()

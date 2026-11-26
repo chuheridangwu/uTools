@@ -1,6 +1,6 @@
 # HANDOVER 交接文档 · uTools 在线工具箱
 
-> 最后更新:**2026-11-12** · 代码基线 `04c14e7` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
+> 最后更新:**2026-11-26** · 代码基线 `47f9a8a` · 工作区干净 · `type-check` 0 错误 · `build` 通过。
 > **接手请先读第 0 节与第 5 节**,历史细节按需查第 8 节。
 
 ---
@@ -8,10 +8,10 @@
 ## 0. 30 秒速览
 
 - **这是什么**:Vue 3 + TypeScript + Vite + Element Plus,「找Tab(https://www.zhaotab.com/)」风格的桌面化在线工具箱。
-- **两个形态**:有路由的「工具」(`config/tools.ts`,31 个)与无路由的「桌面应用」(`config/desktopApps.ts`,82 条注册、**2 条排除** → 80 个)。其中 **12 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
+- **两个形态**:有路由的「工具」(`config/tools.ts`,31 个)与无路由的「桌面应用」(`config/desktopApps.ts`,82 条注册、**2 条排除** → 80 个)。其中 **16 个「整页应用」**(`appCatalog.ts` 的 `FULLSCREEN_APPS`:漫画阅读器、本地媒体、JSON 生成器/查看器、长图拼接、Markdown 编辑器、文本对比、CSV 查看器、SVG 编辑器、HTML 编辑器、画板、四象限笔记、PDF 转图片、Office 文档预览、PDF 工具箱、证件照制作)点击后**换独立路径打开**(`router.push`,工具用自身 path、桌面应用挂 `/app/<key>`),浏览器返回/页内返回按钮回到来源页(对齐找Tab 的 /json-format 模型);其余以浮层 `AppWindow` 打开。
 - **统一目录**:`config/appCatalog.ts` 把两者合并成 `CATALOG`(**111 条**),商店、桌面、搜索、命令面板全部只认这一份。
-- **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换;整页应用(FULLSCREEN_APPS 12 个)以独立路径二级页打开(见第 8 节 2026-11-12)。
-- **没有后端 → 已部分改变(2026-11-13)**:云同步 P1 上线——Supabase(邮箱验证码登录)+ 通用 `app_state` 表(kv 整包同步),离线优先,localStorage 仍是运行时数据源;首批同步 desktop-state / todo / sticky-notes / expense(见 `syncScopes.ts`);未配置 env 或未登录时完全等价纯本地模式。导出/导入 JSON 备份保留。
+- **默认首页是桌面模式**:壁纸 + 系统栏 + 时钟 + 中央拼音搜索 + 圆角图标网格 + Dock + 右键菜单。商店 / 设置 / 添加 App 是**整页**,靠 `?p=store|settings|add-app` 深链接切换;整页应用(FULLSCREEN_APPS 16 个)以独立路径二级页打开(见第 8 节 2026-11-12)。
+- **没有后端 → 已部分改变(2026-11-13)**:云同步 P1 上线——Supabase 登录(邮箱魔法链接,当日 `0311f8e` 由验证码改来)+ 通用 `app_state` 表(kv 整包同步),离线优先,localStorage 仍是运行时数据源;首批同步 desktop-state / todo / sticky-notes / expense(见 `syncScopes.ts`);未配置 env 或未登录时完全等价纯本地模式。导出/导入 JSON 备份保留。**⚠ 已知缺陷(2026-11-26 核实)**:todo / sticky-notes / expense 三个应用直接 `localStorage.setItem` 写入、不派发 `utools:ls-mutated`,目前实际只有 desktop-state 会自动推送,详见第 6 节 C。
 - **不做**:游戏中心、3D 魔方、电台随身听、公众号排版;商店分类「游戏」「阅读」也不做(见 `EXCLUDED_KEYS`)。
 
 ---
@@ -55,7 +55,7 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 ---
 
-## 3. 当前状态(实测事实,2026-11-11)
+## 3. 当前状态(实测事实,2026-11-26 复核)
 
 ### 3.1 数量与分类
 
@@ -63,7 +63,9 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 | --- | --- |
 | `CATALOG` 总数 | **111** |
 | 桌面应用 / 路由工具 | 80 / 31(注册表 82 条,排除电台随身听、公众号排版) |
-| 默认桌面图标 | 34 个(其余在商店「添加」) |
+| 默认桌面图标 | 15 个(`DEFAULT_DESKTOP_IDS`,其余在商店「添加」;2026-11-12 由 34 个改为用户指定的 15 项) |
+| 默认 Dock | 4 个系统入口(首页 / 添加 App / 应用商店 / 设置)+ 4 个固定应用(`DEFAULT_DOCK_IDS`) |
+| 整页应用(`FULLSCREEN_APPS`) | 16 个 |
 | 商店卡片 | 111 张 |
 
 分类计数(浏览器实测,与 README 一致):
@@ -77,31 +79,41 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 
 **分包现状(2026-11-11 Element Plus 按需引入后,commit `8984563`)**:
 
-| chunk | 大小 | 是否首屏加载 |
+| chunk | 大小(2026-11-26 构建) | 是否首屏加载 |
 | --- | --- | --- |
-| `index`(业务代码 + 按需 UI) | 486KB | ✅ |
-| `vendor-core`(vue/router/pinia/pinyin-pro) | 419KB | ✅ |
+| `index`(业务代码 + 按需 UI) | 520KB | ✅ |
+| `vendor-core`(vue/router/pinia/pinyin-pro) | 421KB | ✅ |
 | `_commonjsHelpers` | 755B | ✅ |
-| `index.css`(按需样式 + base) | 95KB | ✅ |
+| `index.css`(按需样式 + base) | 98KB | ✅ |
 | `vendor-markdown`(marked / highlight.js) | 1.03MB | 懒加载 |
 | `heic2any` | 1.35MB | 懒加载 |
 | `ImageToPdf`(含 jsPDF) | 392KB | 懒加载 |
-| `CronParser`(cron-parser + cronstrue) | 307KB | 懒加载 |
+| `CronParser`(cron-parser + cronstrue) | 300KB | 懒加载 |
 | `mqtt` | 338KB | 懒加载 |
+| `PdfToolkit` | 549KB | 懒加载 |
+| `OfficeViewer` | 529KB | 懒加载 |
+| `pdf`(pdf.js 主线程库) | 451KB | 懒加载 |
+| `SqlFormatter` | 297KB | 懒加载 |
 
-> 首屏 JS 由旧策略的 **3.4MB → 1.5MB → 0.9MB**(`index.html` 只 preload `index` / `vendor-core` / `_commonjsHelpers` + 1 个 CSS)。旧 `manualChunks` 把所有 node_modules 塞进单个 `vendor`,导致 jspdf / mqtt / papaparse 这些只被懒加载视图使用的库也被首屏预加载。**新增第三方库时不要再回到「统一 vendor」写法**。
+> 首屏 JS 由旧策略的 **3.4MB → 1.5MB → 0.9MB**。`index.html` 只 preload `index` / `vendor-core` / `_commonjsHelpers` + 1 个 CSS(2026-11-26 复测首屏 JS 0.94MB = 520 + 421KB + 755B;入口 chunk 随功能增加从 486KB 涨到 520KB)。旧 `manualChunks` 把所有 node_modules 塞进单个 `vendor`,导致 jspdf / mqtt / papaparse 这些只被懒加载视图使用的库也被首屏预加载。**新增第三方库时不要再回到「统一 vendor」写法**。
 >
 > Element Plus 已改为按需引入(`unplugin-vue-components` + `unplugin-element-plus`),不再有 `vendor-ui`;`manualChunks` 必须保留 `onlyExplicitManualChunks: true`,否则入口会静态引用手动 chunk 里的 CJS helper,把 1MB 的 `vendor-markdown` 拖进首屏(踩过一次)。
 
 ### 3.3 最近一次交付
 
+**文档与注册表对齐现状**(`47f9a8a`,2026-11-26):README 按实测重写;`RELEASE_BATCHES` 补登记 `office-viewer` / `pdf-toolkit` / `id-photo`(此前漏了 4.1 第 3 步,商店「最新上架」39 → 42 条,前三位变为 证件照制作 / PDF 工具箱 / Office 文档预览);`tools.ts` 同步翻译(双引擎)与图片批量处理(ZIP / 重命名)的描述、工具总数注释 27 → 31;`package.json` 的 `engines.node` 由 `>=18.0.0` 改为 Vite 7 实际要求的 `^20.19.0 || >=22.12.0`。
+- 实测:catalog 脚本(esbuild 打包 `appCatalog.ts` + stub `.vue`)核对 111 条无重复 key,`HOT_LIST` / `LOGIN_REQUIRED` / `RELEASE_BATCHES` 的 key 全部存在;`vite preview` + headless Chrome `--dump-dom` 渲染商店:分类计数与 README 一致、三个分区为 42 / 20 / 111、新描述已生效;`type-check` 0 错误、`build` 通过。
+- 同一轮核实出云同步 P1 的缺陷(未改,待拍板):见第 6 节 C。
+
+**现有工具补强**(`812171a`,2026-11-25;本条为 2026-11-26 据提交信息补记,未重新实测):API 测试器(Body 四类型 / 认证注入 / 请求历史 / cURL 导入)、翻译工具(LibreTranslate → MyMemory 双引擎 + 分段 + 历史)、图片批量处理(命名规则 + ZIP 打包)、Office 预览(导出 CSV / JSON)、PDF 工具箱(压缩 / 加密新标签页)。细节见第 8 节 2026-11-25。
+
 **证件照制作**(`views/IdPhoto.vue`,零新增依赖):四边中位色背景建模 + 连通域抠图、擦除/恢复画笔 + 撤销、纯色/渐变/透明换底、一寸二寸护照签证等 15 种标准尺寸 + 自定义 mm/DPI、5/6/7 寸相纸排版打印;整页应用 `/id-photo`。详见第 8 节 2026-11-19 条目。
 
 **PDF 转图片**(`views/apps/PdfToImage.vue` + `utils/zip.ts`,pdfjs-dist 懒加载):多页每页一张、页码范围、PNG/JPG×1x/2x/3x、ZIP 打包、竖向/横向长图拼接;整页应用 `/app/pdf-to-image`。详见第 8 节 2026-11-13 条目。
 
-**云同步 P1:Supabase 邮箱验证码登录 + 通用同步引擎**(`services/supabase.ts` + `config/syncScopes.ts` + `stores/sync.ts`,设置页账户管理三态 UI),离线优先、LWW 合并、软删除墓碑、离线队列;首批同步 4 个键。详见第 8 节 2026-11-13 条目。
+**云同步 P1:Supabase 登录 + 通用同步引擎**(登录方式当日先做邮箱验证码,`0311f8e` 改为邮箱魔法链接;`services/supabase.ts` + `config/syncScopes.ts` + `stores/sync.ts`,设置页账户管理三态 UI),离线优先、LWW 合并、软删除墓碑、离线队列;首批同步 4 个键。详见第 8 节 2026-11-13 条目。
 
-**整页应用改为换路径打开(对齐找Tab 二级页模型)**:12 个 `FULLSCREEN_APPS` 点击后 `router.push` 到独立路径(工具用 path、无路由桌面应用新增 `/app/<key>` 路由),`App.vue` 桌面模式下命中路径时渲染独立二级页(左上角浮动返回按钮,有历史来路走 `history.back`,直达深链接回桌面),浏览器返回回到来源页(商店/桌面);浮层窗口的全屏形态代码已删除。详见第 8 节 2026-11-12 条目。
+**整页应用改为换路径打开(对齐找Tab 二级页模型)**:12 个 `FULLSCREEN_APPS`(当时 12 个,现为 16 个)点击后 `router.push` 到独立路径(工具用 path、无路由桌面应用新增 `/app/<key>` 路由),`App.vue` 桌面模式下命中路径时渲染独立二级页(左上角浮动返回按钮,有历史来路走 `history.back`,直达深链接回桌面),浏览器返回回到来源页(商店/桌面);浮层窗口的全屏形态代码已删除。详见第 8 节 2026-11-12 条目。
 
 **商店打开应用后「返回」回到商店,对齐找Tab 行为**(见第 8 节 2026-11-12 条目):`StorePage.openNow` 不再关闭商店、`panel` 改 `push` 留历史栈、Esc 先关应用窗口。
 
@@ -191,17 +203,22 @@ npm run preview    # 预览产物(曾用 npx vite preview --port 5188)
 ## 4. 架构与文件地图
 
 ```
+
+> Node 版本:`^20.19.0 || >=22.12.0`(Vite 7 的要求;`package.json` 的 `engines` 已于 `47f9a8a` 对齐,此前写的 `>=18.0.0` 偏旧)。
 src/
-  main.ts / App.vue              # 入口;桌面模式下 App.vue 不渲染 <router-view>
+  main.ts / App.vue              # 入口;三选一渲染:桌面模式的整页二级页(<router-view> + 返回按钮)/ DesktopHome / 经典列表(侧边栏 + 卡片)
   config/
     tools.ts                     # 31 个「有路由的工具」注册表
     desktopApps.ts               # 82 条「浮层应用」注册表(2 条被排除)
     appCatalog.ts                # ★ 唯一目录源:CATALOG / CATALOG_MAP / STORE_CATEGORIES /
                                  #   DEFAULT_DESKTOP_IDS / RELEASE_BATCHES / searchCatalog
     wallpapers.ts                # 6 组渐变 + 5 张内联 SVG 壁纸(无外链)
+    collageLayouts.ts            # 长图拼接的 135 个布局模板
+    syncScopes.ts                # ★ 云同步范围声明:新应用接入同步只加一行
   stores/
     app.ts                       # 深色模式 + 工具收藏(localStorage 前缀 utools_)
     desktop.ts                   # ★ 桌面状态 v2:单键 utools_desktop-state
+    sync.ts                      # 云同步引擎(邮箱魔法链接登录 / LWW 拉取 / 防抖推送 / 离线队列)
   components/desktop/
     DesktopHome.vue              # 桌面:壁纸/系统栏/时钟/搜索/图标网格/Dock/右键菜单
     StorePage.vue                # 应用商店整页(分类 + 搜索分组 + 最近 + 视图切换)
@@ -210,6 +227,8 @@ src/
     AppWindow.vue                # 浮层窗口(teleport to body)
     AppIcon.vue                  # 统一图标:favicon → emoji → EP 图标 → 首字
   router/index.ts                # import.meta.glob 动态路由 + ?p= query 深链接
+  services/supabase.ts           # Supabase 客户端(动态加载;未配置 env 返回 null)
+  utils/zip.ts                   # 纯前端 ZIP 打包(在线解压 / PDF 转图片 / PDF 工具箱 / 批量处理共用)
   styles/desktop-pages.css       # 整页共用样式(--zt-* 变量,亮/暗两套)
   views/apps/*.vue               # 桌面应用视图
   views/*.vue                    # 31 个路由工具视图 + Home
@@ -223,9 +242,9 @@ src/
 
 ### 4.1 新增一个应用的 SOP(照做即可)
 
-1. 写 `src/views/apps/YourApp.vue`(纯前端优先,不引新依赖);
-2. `config/desktopApps.ts` 注册表追加条目(`key/name/short/desc/icon/accent/category/comp`);
-3. `config/appCatalog.ts` 的 `RELEASE_BATCHES` **追加一批 key 数组**——漏了这步 `isNew`/`releasedAt` 为 0,「最新上架」看不到;
+1. 写视图(纯前端优先,不引新依赖):桌面应用 `src/views/apps/YourApp.vue`;路由工具 `src/views/YourTool.vue`(文件名 = key 的 PascalCase,路由由 `router/index.ts` 的 `import.meta.glob` 自动生成);
+2. 注册:桌面应用在 `config/desktopApps.ts` 追加条目(`key/name/short/desc/icon/accent/category/comp`);路由工具在 `config/tools.ts` 的 `TOOLS` 追加 `ToolMeta`(带 `isNew: true`),需要整页打开的再加入 `appCatalog.ts` 的 `FULLSCREEN_APPS`;
+3. `config/appCatalog.ts` 的 `RELEASE_BATCHES` **追加一批 key 数组(路由工具与桌面应用都要)**——漏了这步 `releasedAt` 为 0,「最新上架」看不到(`office-viewer` / `pdf-toolkit` / `id-photo` 三个路由工具就漏过,`47f9a8a` 才补上);
 4. 若用新分类,同时扩展 `desktopApps.ts` 的 `category` 联合类型**和** `appCatalog.ts` 的 `APP_CATEGORY_MAP`;
 5. `npm run type-check` → `npm run build` → 浏览器实测(打开商店 → 找到卡片 → 打开 → 真实操作一遍);
 6. commit + push,并同步本文件第 3 节的数量与第 8 节时间线。
@@ -236,13 +255,13 @@ src/
 
 **桌面(默认首页)**:壁纸(渐变 / 内联 SVG)、顶部系统栏、时钟、中央搜索(拼音,`pinyin-pro`)、圆角图标网格、分页、底部 Dock(4 个系统入口 + 用户固定应用)、右键菜单、双击空白隐藏图标、图标尺寸 / 风格 / 玻璃质感 / 显示标签等偏好、聚焦显示「最近打开」。
 
-**应用商店(整页)**:107 个应用、8 个分类计数、最新上架 / 最受欢迎 / 全部应用、拼音与别名搜索、搜索分组与结果统计、最近打开横条、网格 / 列表切换(持久化)、「添加 / 已添加」与「打开」、手动添加任意网站。
+**应用商店(整页)**:111 个应用、8 个分类计数、最新上架 / 最受欢迎 / 全部应用、拼音与别名搜索、搜索分组与结果统计、最近打开横条、网格 / 列表切换(持久化)、「添加 / 已添加」与「打开」、手动添加任意网站。
 
 **设置(整页)**:外观与壁纸、隐藏应用管理(可恢复)、桌面布局与交互偏好、自定义站点、本地数据用量、导出 / 导入 JSON 备份。
 
-**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 12 个)以**独立路径二级页**打开:桌面模式下 `App.vue` 命中路径即渲染 `<router-view>` 全屏页(左上角浮动返回),浏览器返回回来源页;其余应用保持 1100px 圆角浮层。
+**窗口**:应用以浮层窗口打开,可拖动、可关闭,加载态占位;路由工具与桌面应用共用 `AppIcon`。工作区 / 画布 / 阅读类应用(见 `appCatalog.ts` 的 `FULLSCREEN_APPS`,共 16 个)以**独立路径二级页**打开:桌面模式下 `App.vue` 命中路径即渲染 `<router-view>` 全屏页(左上角浮动返回),浏览器返回回来源页;其余应用保持 1100px 圆角浮层。
 
-**107 个应用 → 108 个**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片(含 PDF 转图片)/ 数据文件 / 局域网八类。每个 P5 批次应用都做过浏览器实测(文件注入、WebSocket 回显、canvas 渲染与导出、持久化、算法正确性等),详见第 8 节。
+**111 个应用**:覆盖效率 / 开发 / 设计 / 生活 / 文本 / 图片(含 PDF 转图片、证件照制作)/ 数据文件(含 Office 文档预览、PDF 工具箱)/ 局域网八类。
 
 > **长图拼接(`/image-stitch`)已升级为完整「布局拼图」**:135 个布局模板 + 14 种画布比例 + 边框/间距/圆角/背景/水印 + 高清 JPG/PNG 导出 + 剪贴板,同时保留竖向/横向长图模式。详见 3.3。
 >
@@ -257,6 +276,8 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 
 ### B. 曾待拍板的应用 —— ❌ 用户已明确「都不需要做」(2026-11-12)
 > **不要再提议、不要开工。** 保留清单只为解释历史讨论,不代表待办。
+>
+> 例外(以用户后续指令为准,均已完成):**真云同步** → 2026-11-13 Supabase P1;**PDF 套件** → `pdf-toolkit`、**图片去背景** → `id-photo`(均 2026-11-19)。详见第 8 节。
 
 | 项 | 当初的评估 |
 | --- | --- |
@@ -272,8 +293,16 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - ~~大 chunk 警告~~ ✅ 已优化(2026-11-11,`663740f`):改为按需分包,首屏 JS 3.4MB → 1.5MB;`vendor-markdown` / `heic2any` / `ImageToPdf` / `CronParser` / `mqtt` 等只在用到时加载。
 - ~~Element Plus 全量引入~~ ✅ 已完成(2026-11-11,`8984563`):按需引入 + `onlyExplicitManualChunks`,首屏 1.5MB → 0.9MB,`vendor-ui` 消失,详见第 8 节。
 - 仍 >1MB 的只剩 `vendor-markdown`(marked / highlight.js)与 `heic2any`,都只在打开对应应用时加载,暂不处理。
-- `package.json` 里的 `jimp` **已无任何源码引用**(`grep -rn jimp src` 为空),属历史残留;移除前确认没有动态引用即可(本次未动,避免无谓 lockfile 变更)。
+- ~~`package.json` 里的 `jimp` 残留~~ ✅ 已于 2026-11-25 移除(`82de697`,连同 0 引用的 `lodash-es` 与 `@types/lodash-es`)。
 - `LanTransfer.vue` 的**真实 WebRTC 连通性仍未人工验证**:内置 Review 浏览器没有可用 WebRTC(`localDescription` 无 candidate,ICE 恒 `new`),自动化只测过 UI / 信令流程。**需在真 Chrome + 手机验证,不要误判为代码 bug**。2026-11-12 起「手动配对」已改为 6 位数字房间,其信令同样只做过 MQTT 层面的收发验证。
+- **云同步 P1 缺陷(2026-11-26 代码阅读 + 运行时核实,未改)**:`TodoList.vue` / `StickyNotes.vue` / `ExpenseTracker.vue` 直接 `localStorage.setItem(KEY, …)` 写入,不经过 `utils/common.ts` 的 `storage.set`,因此不会派发 `utools:ls-mutated`,`sync.enqueue()` 永远收不到 todo / sticky-notes / expense —— **目前实际只有 desktop-state 会自动推送**。
+  - 核实方式:esbuild 打包 `stores/sync.ts`,在 Node 里模拟 localStorage / window,Supabase 换成假客户端;按三个应用的写法写入后 `pending = []`,按 `desktop.ts` 的写法(`storage.set`)写入后 `pending = ["desktop-state"]` 并在防抖后完成推送。
+  - **不要只改写入路径就收工**:这三个 scope 一旦开始推送,`pullAll()` 的判定会带来覆盖问题 —— 本地有数据但从未推送过(`sync-local-times` 无记录)时 `!localTime` 为真,**云端数据直接覆盖本地**;登录前 / 未登录时的本地改动同样没有时间戳。待办、记账是用户数据,覆盖之前要先定策略(本地优先并补推 / 覆盖前留快照 / 首次登录冲突向导),**需用户拍板后再动**。
+  - 可选修法:① 三个应用改走 `storage.set`(键名去掉 `utools_` 前缀,封装会自动加);② 事件到达时无论是否登录都记本地时间并入队(未登录时 `push()` 会原地返回、队列保留);③ `pullAll` 在「云端没有这一行而本地有数据」时入队补推;④ 冲突覆盖前把被覆盖的一方留快照。
+- `xlsx`(SheetJS 0.18.5)的 high 告警官方无修复(2026-11-25 起是 `npm audit --omit=dev` 唯一剩余项);中期可评估换 `exceljs`,但要改 `OfficeViewer` 的读写逻辑并回归,**属重型库取舍,先问用户**。
+- 依赖大版本升级未做:pinia 4 / vue-router 5 / TypeScript 7 有破坏性变更(`82de697` 说明)。
+- 全仓库另有 7 处模板 `placeholder` 含 `://`(`AddAppPage.vue` ×2、`QrcodeTool.vue`、`ApiTester.vue` ×2、`UrlParser.vue`、`WebSocketTest.vue`),当前不报错;若再出现 `fd313bd` 那类 TS2339,改成 `:placeholder="常量"` 即可。
+- 目录里有**两组同名应用**(2026-11-26 发现):「文本统计」= `text-counter`(路由工具,文本工具)+ `text-stats`(桌面应用,效率工具);「颜色工具」= `color-tool`(路由工具,图片工具)+ `color-toolkit`(桌面应用,设计资源)。商店与搜索会出现两张同名卡片,是否改名待用户决定。
 
 ---
 
@@ -303,6 +332,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 22. **scoped 样式里深色覆盖不要写 `:global(html.dark) .xxx`**:Vue 会把它编译成裸 `html.dark{…}`,把后面的选择器整个丢掉 —— 等于直接给 `<html>` 元素设背景/边框,污染全局。正确写法是 `html.dark .xxx`(编译成 `html.dark .xxx[data-v-x]`),参考 `DesktopHome.vue` 的 `html.dark .ctx`。验证方法:`grep -o "html\.dark[^{]*{" dist/assets/xxx.css` 看 `.xxx` 是否还在。
 23. **`innerHTML` 动态生成的节点拿不到 scoped 的 `data-v` 属性**:样式全部失效、只剩继承色(表现为「语法高亮不生效」)。必须写成 `.父容器 :deep(.子元素)`;`::before` / `::after` 也一样要放进 `:deep()` 里。已在 `JsonViewer.vue` 踩过。
 24. **`v-if` / `v-else-if` 切换出来的元素,在同一个 tick 里 `ref` 还是 `null`**:解析完立刻 `renderTarget()` 会拿到旧 DOM 或 null(表现为「点了示例结果区是空的」)。要 `void nextTick(renderTarget)`。
+25. **接入云同步的键必须经 `utils/common.ts` 的 `storage.set` 写入**:直接 `localStorage.setItem` 不会派发 `utools:ls-mutated`,`stores/sync.ts` 收不到变更、永远不会推送(待办 / 便签 / 记账目前就是这样,见第 6 节 C)。`storage.set` 会自动加 `utools_` 前缀,所以传给它的键名不要再带前缀。
 
 ---
 
@@ -492,6 +522,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
 - **踩坑:用户 .env 里值带了引号**(`VITE_SUPABASE_URL='https://…'`),Vite 原样注入导致 createClient 收到带引号字符串;已修正为无引号并加注释。判断注入是否正确要看产物里 `createClient("https://…","sb_…")` 的实参。
 - 实测:type-check 0 错误、build 通过;REST 直连验证:匿名读 app_state 返回 `[]`(RLS 生效)、匿名写 42501 拒绝、OTP 接口联通(无效邮箱 400、有效格式返回 `{}`);产物核对 signInWithOtp / verifyOtp / onAuthStateChange / 离线补推 / 待推队列 / env 内联全部在位。注意:内置 Review 浏览器已从会话移除,本轮改为「Vite 模块转换 + 产物字符串核对 + REST 直连」验证,登录后的真实多端同步需用户真机验证。
 - 已知限制:首批只同步 4 个键;TOTP 等敏感数据按约定不同步;免费项目 7 天无活跃会暂停(数据保留);首次登录云端有数据而本地为空时直接采用云端,两侧都有且冲突时 LWW(云端新则覆盖本地)——更细的合并向导留待 P2。
+- 同日 `0311f8e`:登录改为**邮箱魔法链接**——设置页输入邮箱「发送登录链接」,在同一浏览器点击邮件里的链接后自动登录;验证码输入界面移除(`sync.ts` 的 `verifyCode` 保留但已无调用)。本条 2026-11-26 补记。
 
 ### 2026-11-12 · 整页应用改为换路径打开(对齐找Tab /json-format 模型,需求更正)
 - 用户澄清:「全屏」的本意是**换一个独立路径**(如找Tab 首页点 JSON 格式化 → `zhaotab.com/json-format`),而不是浮层放大;且不想专门去点关闭按钮。
@@ -551,6 +582,7 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   2. **`PDFDocumentProxy` 必须存 `shallowRef`(或普通变量),不能用 `ref`**:Vue 的深层响应式代理会让 pdf.js 访问私有字段 `#pagesNumber` 时抛「Cannot read private member」。
 - 注册:`tools.ts` 追加 `ToolMeta`(category data),`appCatalog.ts` 的 `FULLSCREEN_APPS` 加入 `pdf-toolkit`(缩略图网格 + 阅读器需整页)。
 - 校验:dev 与 `vite preview`(生产构建)双环境实测:3 文件合并 9 页、页面整理导出 4 页、按页拆分 4 个 PDF 的 ZIP、水印+页码输出 3 页有效 PDF、阅读器翻页/缩放/适应宽度均正常,控制台无错误;`type-check` 0 错误、`build` 通过。
+- 后续修复 `9f55051`(同日):点「选择 PDF」无反应 —— `<el-button>` 渲染成 `<button>` 后,放在 `<label>` 内时 label 不会把点击转发给隐藏的 file input;改为按钮 `@click` 主动调用对应 input 的 `click()`,四个标签页各用独立 ref。
 
 ### 2026-11-19 · 新增「证件照制作」(`id-photo`,一键去背景 / 换底色 / 标准尺寸)
 - 用户本轮要求「一键去背景、换底色、证件照尺寸(一寸/二寸/签证照)」,已覆盖此前 2026-11-12「B 类图片去背景不做」的结论,以最新指令为准。
@@ -590,11 +622,30 @@ P5-1~P5-4 共 20 个应用全部完成。找Tab 非游戏应用已基本覆盖�
   5. 输入框按内容自动增高(1~5 行),Enter 发送 / Shift+Enter 换行。
 - 校验(dev server):iframe 390px 宽下媒体查询生效(body `overflow-y:auto`、`.dt-page` `overflow:visible`);textarea 字号 16px、聚焦成功、4 行内容高度 44→114px;「粘贴」按钮 stub 剪贴板后正确填入并聚焦,失败路径弹出提示;`type-check` 0 错误、`build` 通过。
 
+### 2026-11-17 ~ 11-18 · Office 文档预览(`2729e6a` / `da0dbc6` / `b262db3`;2026-11-26 据提交信息补记)
+- 新增路由工具 `office-viewer`「Office 文档预览」(`src/views/OfficeViewer.vue`,数据文件):本地预览 Word(.docx)与 Excel(.xls/.xlsx)/ CSV,不上传。
+- `da0dbc6`:提取 WPS「图片嵌入单元格」——解析私有 `ETCellImageData` 流,新增零依赖 ZIP 读取器;`b262db3`:嵌入单元格图片按 DISPIMG 公式映射回填原位,并加入 `FULLSCREEN_APPS`。
+- 同期 `b66046e`(2026-11-17):用 npm 10 重新生成 `package-lock.json`,修复线上 `npm ci` 报 unplugin 版本不同步。
+
+### 2026-11-25 · 现有工具补强(`812171a`;2026-11-26 据提交信息补记,未重新实测)
+- **API 测试器**:Body 四类型(JSON / 纯文本 / form-urlencoded / multipart 文件上传);Bearer / Basic 认证快捷注入;请求历史(本地 20 条,点击回填);cURL 导入(`-X/-H/-d/--data-raw/-u/-F`,自动推断 method);JSON 响应格式化 / 原始视图切换,发送头回显(认证打码)。
+- **翻译工具**:双引擎自动降级 LibreTranslate(质量优)→ MyMemory(兜底);>490 字符按句切分逐段翻译后拼接;翻译历史 30 条可回填;swap 支持在自动检测下工作。
+- **图片批量处理**:命名规则(保留原名 / 前缀+序号 / 日期+序号 / 纯序号,可设起始号);打包 ZIP(复用 `buildZip`)或逐个下载;每行显示输出文件名,新增删除单行 / 清空全部。
+- **Office 预览**:当前工作表一键导出 CSV(UTF-8 BOM,Excel 中文不乱码)/ JSON,切换工作表后导出内容跟随。
+- **PDF 工具箱**新增「压缩 / 加密」标签页:压缩为逐页重采样重建,可选 96/120/150/200 DPI、JPEG 质量、灰度化(提交信息记录:6 页噪声样本 2.18 MB → 485 KB,省 78%,灰度再省 18%);加密为 AES-256-GCM + PBKDF2(15 万轮)把 PDF 打包成 `.enc`,解密需回本工具,`.enc` 上传自动切到解密模式。
+- 遗留:该提交只同步了 `pdf-toolkit` 的注册表描述,翻译与批量处理的描述到 `47f9a8a` 才补上;本条之前没有写入时间线。
+
+### 2026-11-26 · README 重写 + 注册表补登记 + 云同步缺陷核实(`47f9a8a` 及其后的文档提交)
+- README 此前停在「107 个应用 / 无后端 / 默认桌面 34 个 / jimp 分包」的旧说法,已按实测重写:111 个应用的分类表、16 个整页应用及路径、云同步说明、联网工具清单、目录结构、新增应用 SOP。
+- 注册表补登记与描述同步见 3.3;云同步缺陷与新的待拍板项见第 6 节 C;4.1 的 SOP 此前只覆盖桌面应用,这次补上了路由工具这条分支。
+- 同时更正文档里「云同步 = 邮箱验证码登录」的旧表述:自 `0311f8e` 起实际是邮箱魔法链接(第 0 节、3.3 与第 8 节 11-13 条目)。
+
 ---
 
 ## 9. 下次接手推荐动作
 
 1. 核基线:`npm run type-check`、`npm run build`,`git status -sb` 应为空,`git rev-parse HEAD origin/main` 应相等。
-2. **B 类应用多数已被用户否决**(2026-11-12):PDF 裁剪 / 随机图片 / 浏览器插件 / 真云同步 —— **不要再提**。其中 **PDF 套件(2026-11-19 `pdf-toolkit`)与 图片去背景/证件照(2026-11-19 `id-photo`)已被用户点名要求并完成**,不算在否决范围内。后续可推进的只剩:C 类工程债(LanTransfer 真实跨网人工验证:大厅 + 6 位配对码两种模式)、以及用户新提出的需求。TURN 中继已于更早明确「保持现状」,不再讨论。
+2. **B 类应用多数已被用户否决**(2026-11-12):PDF 裁剪 / 随机图片 / 浏览器插件 / 真云同步 —— **不要再提**。其中 **PDF 套件(2026-11-19 `pdf-toolkit`)与 图片去背景/证件照(2026-11-19 `id-photo`)已被用户点名要求并完成**,不算在否决范围内。后续可推进的只剩 C 类工程债与用户新提出的需求。C 类里**需要用户参与或拍板**的有:① 云同步三个 scope 不推送的缺陷,以及首次登录时的冲突策略(第 6 节 C,涉及用户数据,建议优先);② LanTransfer 真实跨网人工验证(大厅 + 6 位配对码两种模式,需真机);③ `xlsx` 是否换 `exceljs`;④ 两组同名应用是否改名;⑤ pinia 4 / vue-router 5 / TypeScript 7 大版本升级。TURN 中继已于更早明确「保持现状」,不再讨论。
 3. 若继续加应用,严格按 **4.1 的 6 步 SOP**,每批做完就 commit + push,并回来更新本文件第 3 节数量与第 8 节时间线。
 4. 任何「要不要接第三方服务 / 重型库」的取舍,**先问用户再动手**。
+5. **建议的优先顺序**(2026-11-26):先向用户确认云同步三个 scope 不推送的修法与首次登录的冲突策略(第 6 节 C,目前唯一影响用户数据的已知缺陷)→ LanTransfer 真机验证需用户配合 → 其余(换 `exceljs`、同名应用改名、大版本升级)按用户意愿排期。没有新需求时不要自行开新应用。
